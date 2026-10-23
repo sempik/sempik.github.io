@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sempik</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Creepster&family=Rubik:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000;
+    --block: #0d0d0dcc;
+    --line: #ffffff22;
+    --text: #f2f2f2;
+    --muted: #8a8a8a;
+    --white: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Rubik", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 16px;
+    overflow-x: hidden;
+  }
+
+  /* видео всего 736x414 и на чёрном фоне — не растягиваем на весь экран,
+     а ставим почти в родном размере в угол и растворяем края в чёрном */
+  #bg {
+    position: fixed; top: 0; right: 0;
+    width: min(100vw, 900px);
+    z-index: -3;
+    mix-blend-mode: screen;
+    filter: grayscale(1) contrast(1.15);
+    -webkit-mask: radial-gradient(ellipse 85% 95% at 100% 0, #000 55%, transparent 100%);
+            mask: radial-gradient(ellipse 85% 95% at 100% 0, #000 55%, transparent 100%);
+  }
+  .shade {
+    position: fixed; inset: 0; z-index: -2;
+    background: radial-gradient(ellipse at center, transparent 35%, #000000cc 100%);
+  }
+  #petals { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+
+  .wrap {
+    width: 100%;
+    max-width: 520px;
+    animation: rise .8s cubic-bezier(.2,.8,.2,1) both;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(30px); } }
+
+  .head { text-align: center; margin-bottom: 26px; }
+  .avatar {
+    width: 120px; height: 120px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    border: 2px solid #ffffffcc;
+    box-shadow: 0 0 30px #ffffff33;
+    overflow: hidden;
+  }
+  .avatar img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    /* приближаем к морде мишки */
+    transform: scale(1.7);
+    transform-origin: 43% 47%;
+  }
+
+  h1 {
+    font-family: "Creepster", cursive;
+    font-size: 64px;
+    font-weight: 400;
+    letter-spacing: 3px;
+    color: var(--white);
+    text-shadow: 0 0 18px #ffffff66, 0 4px 0 #333;
+    line-height: 1;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
+  }
+  .block {
+    aspect-ratio: 1 / 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    background: var(--block);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    color: var(--text);
+    text-decoration: none;
+    font: inherit;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    transition: transform .25s, border-color .25s, box-shadow .25s, background .25s;
+  }
+  .block:hover {
+    transform: translateY(-5px);
+    border-color: #ffffffaa;
+    background: #ffffff10;
+    box-shadow: 0 10px 30px -8px #ffffff55;
+  }
+  .block svg { width: 46px; height: 46px; fill: var(--white); transition: transform .25s; }
+  .block:hover svg { transform: scale(1.12); }
+  .block .name { font-family: "Creepster", cursive; font-size: 24px; letter-spacing: 1.5px; }
+  .block .sub { color: var(--muted); font-size: 12px; }
+
+  footer { text-align: center; margin-top: 26px; color: var(--muted); font-size: 12px; opacity: .7; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translate(-50%, 90px);
+    background: var(--white); color: #000; font-weight: 600;
+    padding: 10px 18px; border-radius: 10px; font-size: 14px;
+    transition: transform .3s;
+  }
+  .toast.show { transform: translate(-50%, 0); }
+
+  @media (max-width: 380px) { h1 { font-size: 50px; } }
+</style>
+</head>
+<body>
+
+<video id="bg" src="bg.mp4" autoplay muted loop playsinline></video>
+<div class="shade"></div>
+<canvas id="petals"></canvas>
+
+<main class="wrap">
+  <header class="head">
+    <div class="avatar"><img src="avatar.jpg" alt="sempik"></div>
+    <h1>sempik</h1>
+  </header>
+  <nav class="grid" id="links"></nav>
+  <footer>© <span id="year"></span> sempik</footer>
+</main>
+
+<div class="toast" id="toast">Скопировано!</div>
+
+<script>
+  // ====== РЕДАКТИРУЙ ССЫЛКИ ТУТ ======
+  // url — ссылка; copy — текст, который копируется по клику (для Discord-ника)
+  const LINKS = [
+    { name: "Steam",   sub: "профиль",   url: "https://steamcommunity.com/profiles/76561199049345067/", icon: "steam" },
+    { name: "Discord", sub: "babazina",  copy: "babazina",                                           icon: "discord" },
+    { name: "GitHub",  sub: "sempik",    url: "https://github.com/sempik",                           icon: "github" },
+  ];
+  // ===================================
+
+  const ICONS = {
+    steam: '<path d="M11.98 0C5.67 0 .5 4.86 0 11.05l6.44 2.66a3.4 3.4 0 0 1 2.14-.6l2.87-4.15v-.06a4.53 4.53 0 1 1 4.53 4.53h-.1l-4.08 2.92v.16a3.4 3.4 0 0 1-6.75.6L.4 15.1A12 12 0 1 0 11.98 0zM7.54 18.2l-1.47-.6a2.55 2.55 0 1 0 1.4-3.47l1.52.63a1.88 1.88 0 1 1-1.45 3.46zm11.42-9.3a3.02 3.02 0 1 0-6.04 0 3.02 3.02 0 0 0 6.04 0zm-5.28 0a2.27 2.27 0 1 1 4.54 0 2.27 2.27 0 0 1-4.54 0z"/>',
+    discord: '<path d="M20.32 4.37A19.8 19.8 0 0 0 15.4 2.8a13.7 13.7 0 0 0-.63 1.29 18.3 18.3 0 0 0-5.5 0 12.6 12.6 0 0 0-.64-1.29 19.7 19.7 0 0 0-4.92 1.53C.6 9.05-.24 13.6.18 18.1a19.9 19.9 0 0 0 6.03 3.05c.49-.66.92-1.36 1.3-2.1a12.9 12.9 0 0 1-2.04-.98l.5-.39a14.2 14.2 0 0 0 12.16 0l.5.39c-.65.39-1.33.71-2.05.98.38.74.81 1.44 1.3 2.1a19.8 19.8 0 0 0 6.04-3.05c.5-5.2-.84-9.72-3.6-13.73zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.16-1.08-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z"/>',
+    github: '<path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/>',
+  };
+
+  const box = document.getElementById("links");
+  const toast = document.getElementById("toast");
+
+  LINKS.forEach(l => {
+    const el = document.createElement(l.url ? "a" : "button");
+    el.className = "block";
+    el.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[l.icon] || ""}</svg>
+      <span class="name">${l.name}</span><span class="sub">${l.sub || ""}</span>`;
+    if (l.url) { el.href = l.url; el.target = "_blank"; el.rel = "noopener"; }
+    else {
+      el.onclick = () => {
+        navigator.clipboard.writeText(l.copy).catch(() => {});
+        toast.textContent = `Скопировано: ${l.copy}`;
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 1800);
+      };
+    }
+    box.appendChild(el);
+  });
+
+  // чёткие лепестки поверх видео (рисуются с учётом плотности пикселей экрана)
+  const cv = document.getElementById("petals"), ctx = cv.getContext("2d");
+  let W, H;
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize(); addEventListener("resize", resize);
+
+  const newPetal = (top) => ({
+    x: Math.random() * W * 1.2,
+    y: top ? -20 : Math.random() * H,
+    s: 6 + Math.random() * 9,
+    vy: .5 + Math.random() * 1.1,
+    vx: -.3 - Math.random() * .7,
+    rot: Math.random() * 6.28, vr: (Math.random() - .5) * .04,
+    flip: Math.random() * 6.28, vf: .02 + Math.random() * .04,
+    hue: Math.random() < .5 ? "#d8d8d8" : "#9a9a9a",
+  });
+  const petals = Array.from({ length: 40 }, () => newPetal(false));
+
+  function drawPetal(p) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.scale(1, Math.abs(Math.cos(p.flip)) * .8 + .2);
+    const g = ctx.createLinearGradient(0, -p.s, 0, p.s);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(1, p.hue);
+    ctx.fillStyle = g;
+    ctx.globalAlpha = .85;
+    ctx.beginPath();
+    ctx.moveTo(0, p.s);
+    ctx.bezierCurveTo(p.s, p.s * .3, p.s * .7, -p.s, p.s * .15, -p.s * .8);
+    ctx.lineTo(0, -p.s * .55);
+    ctx.lineTo(-p.s * .15, -p.s * .8);
+    ctx.bezierCurveTo(-p.s * .7, -p.s, -p.s, p.s * .3, 0, p.s);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  (function tick() {
+    ctx.clearRect(0, 0, W, H);
+    petals.forEach((p, i) => {
+      p.y += p.vy; p.x += p.vx + Math.sin(p.flip) * .4;
+      p.rot += p.vr; p.flip += p.vf;
+      if (p.y > H + 20 || p.x < -20) petals[i] = newPetal(true);
+      drawPetal(p);
+    });
+    if (!still) requestAnimationFrame(tick);
+  })();
+
+  document.getElementById("year").textContent = new Date().getFullYear();
+</script>
+</body>
+</html>
