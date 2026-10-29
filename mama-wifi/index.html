@@ -231,6 +231,45 @@
   .wbtn.gray { background: #e3e3e3; color: #111; }
   .pwd { width: 100%; background: #fff; border: 1px solid #999; border-bottom: 2px solid var(--win); border-radius: 3px; padding: 4px 6px; margin: 4px 0 6px; font-size: 10px; letter-spacing: 2px; }
 
+  /* Windows 10 */
+  .desk.w10 { height: 275px; background: radial-gradient(ellipse at 35% 45%, #5fb2ff 0, #0b62c0 32%, #062a5c 75%); }
+  .tb10 {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 28px; background: #101418; color: #fff;
+    display: flex; align-items: center; gap: 5px; padding-right: 4px; font-size: 8px;
+  }
+  .tb10 .start { width: 26px; height: 28px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+  .tb10 .start svg { width: 12px; height: 12px; }
+  .tb10 .search {
+    flex: 0 1 96px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    background: #f3f3f3; color: #555; height: 28px; line-height: 28px; padding: 0 5px;
+  }
+  .tb10 > i { width: 14px; height: 14px; border-radius: 2px; background: #5d7fae; display: block; flex: 0 0 auto; }
+  .tb10 .sp { margin-left: auto; }
+  .tb10 svg.t { width: 13px; height: 13px; flex: 0 0 auto; }
+  .tb10 .w { display: flex; padding: 3px; border-radius: 3px; }
+  .tb10 .w.act { background: #3a3f45; }
+  .tb10 .clk { text-align: center; line-height: 1.15; }
+  .fly {
+    position: absolute; right: 0; bottom: 28px; top: 6px; width: 205px; background: #1f1f1f; color: #fff;
+    display: flex; flex-direction: column; font-size: 9.5px; box-shadow: -2px 0 10px rgba(0, 0, 0, .4);
+  }
+  .fnet { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 6px 8px; }
+  .fnet svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  .fnet small { display: block; color: #bbb; font-size: 8px; }
+  .fnet.sel { background: #3d3d3d; }
+  .fnet .chk { width: 100%; padding-left: 23px; display: flex; gap: 5px; align-items: center; font-size: 8.5px; }
+  .fnet .chk b { width: 10px; height: 10px; background: #0078d7; font-size: 7px; display: inline-flex; align-items: center; justify-content: center; }
+  .fnet .sub { width: 100%; padding-left: 23px; font-size: 8.5px; line-height: 1.3; }
+  .fnet .rowbtn { width: 100%; display: flex; justify-content: flex-end; gap: 5px; position: relative; }
+  .b10 { background: #5c5c5c; color: #fff; padding: 4px 10px; font-size: 9px; display: inline-block; }
+  .b10.acc { background: #0078d7; }
+  .fpwd { background: #fff; color: #111; border: 2px solid #0078d7; padding: 3px 6px; margin: 4px 0 2px; letter-spacing: 2px; font-size: 10px; }
+  .flink { margin-top: auto; padding: 6px 8px; color: #8ec5ff; font-size: 8.5px; border-top: 1px solid #333; }
+  .ftiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; }
+  .ft { background: #3a3a3a; height: 40px; padding: 4px; display: flex; flex-direction: column; justify-content: space-between; font-size: 7.5px; line-height: 1.1; }
+  .ft svg { width: 11px; height: 11px; }
+  .ft.on { background: #0078d7; }
+
   /* финал и помощь */
   .yay { text-align: center; padding: 26px 16px; background: var(--ok-soft); border-radius: 22px; margin-top: 18px; }
   .yay .big { font-size: 3rem; }
@@ -448,128 +487,171 @@
       <button class="donebtn">✓ Сделала</button>
     </section>
 
-    <!-- ===== НОУТБУК ===== -->
+    <!-- ===== НОУТБУК (Windows 10) ===== -->
     <h2><span class="ico">💻</span> Теперь — ноутбук</h2>
 
     <section class="step">
       <div class="step-head"><div class="num"></div><h3>Нажми на значок Wi-Fi внизу справа</h3></div>
-      <p class="txt">Посмотри в правый нижний угол экрана, рядом с часами. Там есть значок «веер» <svg style="width:1em;height:1em;vertical-align:-2px"><use href="#i-wifi"/></svg> (или глобус 🌐). Нажми на него один раз.</p>
+      <p class="txt">Посмотри в правый нижний угол экрана — там часы и буквы «РУС». Рядом с ними есть значок-«веер» <svg style="width:1em;height:1em;vertical-align:-2px"><use href="#i-wifi"/></svg> (или глобус 🌐). Нажми на него один раз.</p>
+      <p class="txt" style="font-size:.9rem;color:var(--soft)">Не видно значка? Нажми на маленькую стрелочку <b>^</b> рядом — он может прятаться там.</p>
       <div class="pic">
-        <div class="laptop"><div class="lid"><div class="desk">
-          <div class="taskbar">
-            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
-            <div class="tray tap" style="position:relative">
-              <svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg>
-              <span class="finger" style="left:-2px;top:-34px;transform:rotate(180deg);animation:none">👆</span>
-            </div>
-            <div class="clock-w">12:30<br>29.10.2026</div>
+        <div class="laptop"><div class="lid"><div class="desk w10">
+          <div class="tb10">
+            <span class="start"><svg viewBox="0 0 16 16"><path fill="#fff" d="M0 2.2 6.5 1.3v6.2H0zm7.3-1L16 0v7.5H7.3zM0 8.3h6.5v6.3L0 13.7zm7.3 0H16V16l-8.7-1.2z"/></svg></span>
+            <span class="search">🔍 Введите здесь текст для поиска</span>
+            <i></i><i></i><i></i>
+            <span class="sp">^</span>
+            <span class="w tap" style="position:relative"><svg class="t"><use href="#i-wifi"/></svg><span class="finger" style="left:-8px;top:-36px;transform:rotate(180deg);animation:none">👆</span></span>
+            <svg class="t"><use href="#i-sound"/></svg><svg class="t"><use href="#i-batt"/></svg>
+            <span>РУС</span>
+            <span class="clk">12:30<br>29.10.2026</span>
           </div>
         </div></div><div class="base"></div></div>
       </div>
-      <button class="donebtn">✓ Сделала</button>
-    </section>
-
-    <section class="step">
-      <div class="step-head"><div class="num"></div><h3>Нажми стрелочку <b>›</b> возле Wi-Fi</h3></div>
-      <p class="txt">Откроется окошко с квадратными кнопками. У кнопки Wi-Fi справа есть маленькая стрелочка <b>›</b> — нажми на неё.</p>
-      <div class="note">💡 Если после прошлого шага <b>сразу появился список сетей</b> — значит, у тебя другая Windows. Этот шаг просто пропусти и переходи к следующему.</div>
-      <div class="pic">
-        <div class="laptop"><div class="lid"><div class="desk">
-          <div class="panel">
-            <div class="qs">
-              <div class="q"><div class="split"><div class="btn on" style="border-radius:5px 0 0 5px"><svg style="color:#fff"><use href="#i-wifi"/></svg></div><div class="btn on arr tap" style="border-radius:0 5px 5px 0;position:relative">›<span class="finger" style="left:4px;top:18px;font-size:24px">👆</span></div></div>Wi-Fi</div>
-              <div class="q"><div class="split"><div class="btn on" style="border-radius:5px 0 0 5px"><svg style="color:#fff"><use href="#i-bt"/></svg></div><div class="btn on arr" style="border-radius:0 5px 5px 0">›</div></div>Bluetooth</div>
-              <div class="q"><div class="btn"><svg><use href="#i-plane"/></svg></div>Режим «в самолёте»</div>
-              <div class="q"><div class="btn"><svg><use href="#i-batt"/></svg></div>Экономия заряда</div>
-              <div class="q"><div class="btn"><svg><use href="#i-moon"/></svg></div>Ночной свет</div>
-              <div class="q"><div class="btn"><svg><use href="#i-hotspot"/></svg></div>Хот-спот</div>
-            </div>
-            <div class="slider"></div>
-          </div>
-          <div class="taskbar">
-            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
-            <div class="tray" style="background:#dfe5ef"><svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg></div>
-            <div class="clock-w">12:30<br>29.10.2026</div>
-          </div>
-        </div></div><div class="base"></div></div>
-      </div>
-      <p class="zoom-note">Кнопка Wi-Fi должна быть синей. Если серая — сначала нажми на неё саму.</p>
       <button class="donebtn">✓ Сделала</button>
     </section>
 
     <section class="step">
       <div class="step-head"><div class="num"></div><h3>Выбери свой телефон в списке</h3></div>
-      <p class="txt">В списке сетей найди название своего телефона — <b class="hl netname">iPhone</b> (то, что было на телефоне в шаге <span class="namestep">3</span>). Нажми на него.</p>
-      <p class="txt">Поставь галочку <b>«Подключаться автоматически»</b> и нажми синюю кнопку <b>«Подключиться»</b>.</p>
+      <p class="txt">Справа откроется тёмный список сетей. Найди там <b class="hl netname">iPhone</b> — это твой телефон (название было на телефоне в шаге <span class="namestep">3</span>). Нажми на него.</p>
+      <p class="txt">Поставь галочку <b>«Подключаться автоматически»</b> и нажми кнопку <b>«Подключиться»</b>.</p>
       <div class="pic">
-        <div class="laptop"><div class="lid"><div class="desk">
-          <div class="panel nets" style="width:215px">
-            <div class="hdr">‹ Wi-Fi<span class="sw" style="margin-left:auto"></span></div>
-            <div class="net sel">
-              <svg><use href="#i-wifi"/></svg><div><b class="netname">iPhone</b><small>Защищённая</small></div>
+        <div class="laptop"><div class="lid"><div class="desk w10">
+          <div class="fly">
+            <div class="fnet sel">
+              <svg><use href="#i-wifi"/></svg><div><b class="netname">iPhone</b><small>Защищено</small></div>
               <div class="chk"><b>✓</b>Подключаться автоматически</div>
-              <div style="width:100%;text-align:right;padding-top:4px;position:relative"><span class="wbtn tap" style="border-radius:4px">Подключиться</span><span class="finger" style="right:14px;top:18px;font-size:24px">👆</span></div>
+              <div class="rowbtn"><span class="b10 acc tap">Подключиться</span><span class="finger" style="right:10px;top:16px;font-size:22px">👆</span></div>
             </div>
-            <div class="net"><svg><use href="#i-wifi"/></svg><div>TP-Link_5F2A<small>Защищённая</small></div></div>
-            <div class="net"><svg><use href="#i-wifi"/></svg><div>Rostelecom_77<small>Защищённая</small></div></div>
+            <div class="fnet"><svg><use href="#i-wifi"/></svg><div>TP-Link_5F2A<small>Защищено</small></div></div>
+            <div class="fnet"><svg><use href="#i-wifi"/></svg><div>Rostelecom_77<small>Защищено</small></div></div>
+            <div class="flink">Параметры сети и Интернет</div>
+            <div class="ftiles">
+              <div class="ft on"><svg><use href="#i-wifi"/></svg>Wi-Fi</div>
+              <div class="ft"><svg><use href="#i-plane"/></svg>Режим «в самолёте»</div>
+              <div class="ft"><svg><use href="#i-hotspot"/></svg>Мобильный хот-спот</div>
+            </div>
           </div>
-          <div class="taskbar">
-            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
-            <div class="tray" style="background:#dfe5ef"><svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg></div>
-            <div class="clock-w">12:30<br>29.10.2026</div>
+          <div class="tb10">
+            <span class="start"><svg viewBox="0 0 16 16"><path fill="#fff" d="M0 2.2 6.5 1.3v6.2H0zm7.3-1L16 0v7.5H7.3zM0 8.3h6.5v6.3L0 13.7zm7.3 0H16V16l-8.7-1.2z"/></svg></span>
+            <span class="search">🔍 Введите здесь текст для поиска</span>
+            <i></i><i></i><i></i>
+            <span class="sp">^</span>
+            <span class="w act"><svg class="t"><use href="#i-wifi"/></svg></span>
+            <svg class="t"><use href="#i-sound"/></svg><svg class="t"><use href="#i-batt"/></svg>
+            <span>РУС</span>
+            <span class="clk">12:30<br>29.10.2026</span>
           </div>
         </div></div><div class="base"></div></div>
       </div>
+      <div class="note">💡 Список пустой? Посмотри на квадратики внизу этого окошка: кнопка <b>«Wi-Fi»</b> должна быть <b style="color:#0078d7">синей</b>. Если она серая — нажми на неё. А «Режим "в самолёте"» должен быть серым.</div>
       <p class="zoom-note">Чужие сети (соседей) не трогай — нужна только та, что с названием твоего телефона.</p>
       <button class="donebtn">✓ Сделала</button>
     </section>
 
     <section class="step">
       <div class="step-head"><div class="num"></div><h3>Введи пароль и нажми «Далее»</h3></div>
-      <p class="txt">Появится белое поле «Введите ключ безопасности сети». Напечатай туда <b>пароль с телефона</b> и нажми <b>«Далее»</b>.</p>
+      <p class="txt">Появится поле «Введите ключ безопасности сети». Напечатай туда <b>пароль с телефона</b> и нажми <b>«Далее»</b>.</p>
       <ul style="margin:6px 0">
-        <li>Буквы — <b>английские</b>. Если печатаются русские, нажми одновременно <b>Shift + Alt</b> (или посмотри на «РУС/ENG» внизу справа и нажми туда).</li>
+        <li>Буквы — <b>английские</b>. Если печатаются русские, нажми одновременно <b>Shift + Alt</b> (или нажми на «РУС» внизу справа и выбери «ENG»).</li>
         <li>Большие и маленькие буквы важны — печатай точно как на телефоне.</li>
       </ul>
       <div class="pic">
-        <div class="laptop"><div class="lid"><div class="desk">
-          <div class="panel nets" style="width:215px">
-            <div class="hdr">‹ Wi-Fi<span class="sw" style="margin-left:auto"></span></div>
-            <div class="net sel" style="display:block">
-              <div style="display:flex;gap:7px;align-items:center"><svg><use href="#i-wifi"/></svg><b class="netname">iPhone</b></div>
-              <div style="padding:4px 0 0 22px">
-                Введите ключ безопасности сети
-                <div class="pwd tap" style="border-radius:3px">abcd1234</div>
-                <div style="display:flex;gap:6px;justify-content:flex-end;position:relative"><span class="wbtn">Далее</span><span class="wbtn gray">Отмена</span><span class="finger" style="right:60px;top:14px;font-size:24px">👆</span></div>
+        <div class="laptop"><div class="lid"><div class="desk w10">
+          <div class="fly">
+            <div class="fnet sel">
+              <svg><use href="#i-wifi"/></svg><div><b class="netname">iPhone</b><small>Защищено</small></div>
+              <div class="sub">Введите ключ безопасности сети
+                <div class="fpwd tap">abcd1234</div>
               </div>
+              <div class="rowbtn"><span class="b10">Далее</span><span class="b10">Отмена</span><span class="finger" style="right:50px;top:16px;font-size:22px">👆</span></div>
+            </div>
+            <div class="fnet"><svg><use href="#i-wifi"/></svg><div>TP-Link_5F2A<small>Защищено</small></div></div>
+            <div class="flink">Параметры сети и Интернет</div>
+            <div class="ftiles">
+              <div class="ft on"><svg><use href="#i-wifi"/></svg>Wi-Fi</div>
+              <div class="ft"><svg><use href="#i-plane"/></svg>Режим «в самолёте»</div>
+              <div class="ft"><svg><use href="#i-hotspot"/></svg>Мобильный хот-спот</div>
             </div>
           </div>
-          <div class="taskbar">
-            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
-            <div class="tray" style="background:#dfe5ef"><svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg></div>
-            <div class="clock-w">12:30<br>29.10.2026</div>
+          <div class="tb10">
+            <span class="start"><svg viewBox="0 0 16 16"><path fill="#fff" d="M0 2.2 6.5 1.3v6.2H0zm7.3-1L16 0v7.5H7.3zM0 8.3h6.5v6.3L0 13.7zm7.3 0H16V16l-8.7-1.2z"/></svg></span>
+            <span class="search">🔍 Введите здесь текст для поиска</span>
+            <i></i><i></i><i></i>
+            <span class="sp">^</span>
+            <span class="w act"><svg class="t"><use href="#i-wifi"/></svg></span>
+            <svg class="t"><use href="#i-sound"/></svg><svg class="t"><use href="#i-batt"/></svg>
+            <span>РУС</span>
+            <span class="clk">12:30<br>29.10.2026</span>
           </div>
         </div></div><div class="base"></div></div>
       </div>
-      <p class="zoom-note">Если ноутбук спросит «Разрешить другим устройствам обнаруживать этот компьютер?» — нажми «Нет».</p>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><div class="num"></div><h3>Спросит про «обнаруживать» — нажми «Нет»</h3></div>
+      <p class="txt">Ноутбук может спросить: «Вы хотите разрешить другим компьютерам и устройствам в этой сети обнаруживать ваш ПК?» Нажми <b>«Нет»</b>.</p>
+      <p class="txt" style="font-size:.9rem;color:var(--soft)">Если такого вопроса не было — ничего страшного, просто иди дальше.</p>
+      <div class="pic">
+        <div class="laptop"><div class="lid"><div class="desk w10">
+          <div class="fly">
+            <div class="fnet sel">
+              <svg><use href="#i-wifi"/></svg><div><b class="netname">iPhone</b><small>Защищено</small></div>
+              <div class="sub">Вы хотите разрешить другим компьютерам и устройствам в этой сети обнаруживать ваш ПК?</div>
+              <div class="rowbtn"><span class="b10">Да</span><span class="b10 tap">Нет</span><span class="finger" style="right:2px;top:16px;font-size:22px">👆</span></div>
+            </div>
+            <div class="fnet"><svg><use href="#i-wifi"/></svg><div>TP-Link_5F2A<small>Защищено</small></div></div>
+            <div class="flink">Параметры сети и Интернет</div>
+            <div class="ftiles">
+              <div class="ft on"><svg><use href="#i-wifi"/></svg>Wi-Fi</div>
+              <div class="ft"><svg><use href="#i-plane"/></svg>Режим «в самолёте»</div>
+              <div class="ft"><svg><use href="#i-hotspot"/></svg>Мобильный хот-спот</div>
+            </div>
+          </div>
+          <div class="tb10">
+            <span class="start"><svg viewBox="0 0 16 16"><path fill="#fff" d="M0 2.2 6.5 1.3v6.2H0zm7.3-1L16 0v7.5H7.3zM0 8.3h6.5v6.3L0 13.7zm7.3 0H16V16l-8.7-1.2z"/></svg></span>
+            <span class="search">🔍 Введите здесь текст для поиска</span>
+            <i></i><i></i><i></i>
+            <span class="sp">^</span>
+            <span class="w act"><svg class="t"><use href="#i-wifi"/></svg></span>
+            <svg class="t"><use href="#i-sound"/></svg><svg class="t"><use href="#i-batt"/></svg>
+            <span>РУС</span>
+            <span class="clk">12:30<br>29.10.2026</span>
+          </div>
+        </div></div><div class="base"></div></div>
+      </div>
       <button class="donebtn">✓ Сделала</button>
     </section>
 
     <section class="step">
       <div class="step-head"><div class="num"></div><h3>Проверь: «Подключено»</h3></div>
-      <p class="txt">Под названием телефона должно появиться слово <b style="color:var(--ok)">«Подключено»</b>. Значок внизу справа станет «веером». Всё, интернет есть — можно открывать браузер!</p>
+      <p class="txt">Под названием телефона должно появиться <b style="color:var(--ok)">«Подключено, защищено»</b>. Всё, интернет есть — можно открывать браузер! Окошко со списком закроется само, если нажать в любое место экрана.</p>
       <div class="pic">
-        <div class="laptop"><div class="lid"><div class="desk">
-          <div class="panel nets" style="width:215px">
-            <div class="hdr">‹ Wi-Fi<span class="sw" style="margin-left:auto"></span></div>
-            <div class="net sel" style="outline:2px solid var(--ok)"><svg><use href="#i-wifi"/></svg><div><b class="netname">iPhone</b><small style="color:var(--ok);font-weight:700">Подключено, защищено</small></div>
-              <div style="width:100%;text-align:right;padding-top:4px"><span class="wbtn gray">Отключиться</span></div></div>
-            <div class="net"><svg><use href="#i-wifi"/></svg><div>TP-Link_5F2A<small>Защищённая</small></div></div>
+        <div class="laptop"><div class="lid"><div class="desk w10">
+          <div class="fly">
+            <div class="fnet sel" style="outline:2px solid #4cd07d;outline-offset:-2px">
+              <svg><use href="#i-wifi"/></svg><div><b class="netname">iPhone</b><small style="color:#7ee2a2;font-weight:700">Подключено, защищено</small></div>
+              <div class="rowbtn"><span class="b10">Отключиться</span></div>
+            </div>
+            <div class="fnet"><svg><use href="#i-wifi"/></svg><div>TP-Link_5F2A<small>Защищено</small></div></div>
+            <div class="fnet"><svg><use href="#i-wifi"/></svg><div>Rostelecom_77<small>Защищено</small></div></div>
+            <div class="flink">Параметры сети и Интернет</div>
+            <div class="ftiles">
+              <div class="ft on"><svg><use href="#i-wifi"/></svg>Wi-Fi</div>
+              <div class="ft"><svg><use href="#i-plane"/></svg>Режим «в самолёте»</div>
+              <div class="ft"><svg><use href="#i-hotspot"/></svg>Мобильный хот-спот</div>
+            </div>
           </div>
-          <div class="taskbar">
-            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
-            <div class="tray" style="background:#dfe5ef"><svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg></div>
-            <div class="clock-w">12:30<br>29.10.2026</div>
+          <div class="tb10">
+            <span class="start"><svg viewBox="0 0 16 16"><path fill="#fff" d="M0 2.2 6.5 1.3v6.2H0zm7.3-1L16 0v7.5H7.3zM0 8.3h6.5v6.3L0 13.7zm7.3 0H16V16l-8.7-1.2z"/></svg></span>
+            <span class="search">🔍 Введите здесь текст для поиска</span>
+            <i></i><i></i><i></i>
+            <span class="sp">^</span>
+            <span class="w act"><svg class="t"><use href="#i-wifi"/></svg></span>
+            <svg class="t"><use href="#i-sound"/></svg><svg class="t"><use href="#i-batt"/></svg>
+            <span>РУС</span>
+            <span class="clk">12:30<br>29.10.2026</span>
           </div>
         </div></div><div class="base"></div></div>
       </div>
@@ -623,7 +705,7 @@
     <details>
       <summary>Внизу справа нет значка Wi-Fi, а есть самолётик ✈️</summary>
       <div class="body"><ul>
-        <li>Включён режим «в самолёте». Нажми на самолётик, затем на кнопку «Режим "в самолёте"», чтобы она стала серой. После этого кнопка Wi-Fi должна стать синей.</li>
+        <li>Включён режим «в самолёте». Нажми на самолётик — внизу открывшегося окошка будут квадратные кнопки. Нажми на «Режим "в самолёте"», чтобы она стала серой, а кнопка «Wi-Fi» — синей.</li>
       </ul></div>
     </details>
 
