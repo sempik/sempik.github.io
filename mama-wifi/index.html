@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Интернет на ноутбук с телефона</title>
+<style>
+  :root {
+    --bg: #fbf6ef;
+    --card: #ffffff;
+    --ink: #2b2420;
+    --soft: #6f6259;
+    --line: #eadfd3;
+    --accent: #e8643c;
+    --accent-soft: #fde7de;
+    --ok: #2f9e5b;
+    --ok-soft: #e1f4e8;
+    --blue: #1a73e8;
+    --win: #0067c0;
+    --fs: 20px;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: var(--fs); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Segoe UI", Roboto, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 18px 16px 80px; }
+  h1 { font-size: 1.6rem; line-height: 1.2; margin: 10px 0 8px; }
+  h2 { font-size: 1.3rem; margin: 40px 0 6px; display: flex; align-items: center; gap: 10px; }
+  h2 .ico { font-size: 1.6rem; }
+  p { margin: 8px 0; }
+  .lead { color: var(--soft); font-size: 1.05rem; }
+  b.hl { background: var(--accent-soft); padding: 0 4px; border-radius: 4px; }
+
+  .fontbar { display: flex; justify-content: flex-end; gap: 8px; }
+  .fontbar button {
+    border: 2px solid var(--line); background: #fff; border-radius: 10px;
+    font: inherit; font-weight: 700; padding: 4px 12px; cursor: pointer; color: var(--ink);
+  }
+
+  .note {
+    background: #fff8e1; border: 2px solid #f5dd8f; border-radius: 14px;
+    padding: 12px 14px; margin: 14px 0; font-size: .95rem;
+  }
+
+  /* выбор телефона */
+  .choose { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 4px; }
+  .choose button {
+    font: inherit; cursor: pointer; background: var(--card); color: var(--ink);
+    border: 3px solid var(--line); border-radius: 18px; padding: 14px 8px 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    transition: border-color .2s, transform .1s;
+  }
+  .choose button:active { transform: scale(.97); }
+  .choose button.on { border-color: var(--accent); background: var(--accent-soft); }
+  .choose .t { font-weight: 700; font-size: 1.05rem; }
+  .choose .s { font-size: .75rem; color: var(--soft); line-height: 1.25; }
+  .choose svg { width: 64px; height: 64px; }
+  .pick-hint { text-align: center; color: var(--soft); font-size: .9rem; }
+  body:not(.chosen) .after-choice { display: none; }
+
+  body.iphone [data-only="android"], body.android [data-only="iphone"] { display: none !important; }
+
+  /* шаги */
+  .step {
+    background: var(--card); border-radius: 22px; padding: 18px 16px 16px;
+    margin: 16px 0; box-shadow: 0 2px 0 var(--line), 0 6px 20px rgba(80, 50, 20, .06);
+    border: 2px solid transparent; transition: opacity .3s, border-color .3s;
+  }
+  .step.done { border-color: var(--ok); }
+  .step.done .pic { opacity: .45; }
+  .step-head { display: flex; gap: 12px; align-items: flex-start; }
+  .num {
+    flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 800; font-size: 1.25rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step.done .num { background: var(--ok); font-size: 0; }
+  .step.done .num::after { content: "✓"; font-size: 1.4rem; }
+  .step h3 { margin: 6px 0 0; font-size: 1.15rem; line-height: 1.3; }
+  .step .txt { margin-top: 8px; }
+  .pic { display: flex; justify-content: center; margin: 16px 0 6px; transition: opacity .3s; }
+  .donebtn {
+    display: block; width: 100%; margin-top: 12px; padding: 14px; cursor: pointer;
+    font: inherit; font-weight: 700; color: var(--ok); background: var(--ok-soft);
+    border: 2px solid var(--ok); border-radius: 14px;
+  }
+  .step.done .donebtn { background: var(--ok); color: #fff; }
+
+  /* нажми сюда */
+  .tap { position: relative; }
+  .tap::after {
+    content: ""; position: absolute; inset: -5px; border-radius: inherit;
+    border: 3px solid var(--accent); pointer-events: none;
+    animation: pulse 1.4s ease-out infinite;
+  }
+  .tap.round::after { border-radius: 50%; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(232, 100, 60, .55); }
+    100% { box-shadow: 0 0 0 12px rgba(232, 100, 60, 0); }
+  }
+  .finger {
+    position: absolute; font-size: 30px; line-height: 1; z-index: 3; pointer-events: none;
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .3));
+    animation: poke 1.4s ease-in-out infinite;
+  }
+  @keyframes poke { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-3px, -5px); } }
+
+  /* телефон */
+  .phone {
+    width: 230px; border-radius: 34px; background: #1d1d1f; padding: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .2);
+  }
+  .phone .screen {
+    position: relative; height: 410px; border-radius: 26px; overflow: hidden;
+    font-size: 13px; line-height: 1.3;
+  }
+  .statusbar {
+    display: flex; justify-content: space-between; padding: 8px 18px 4px;
+    font-size: 12px; font-weight: 700;
+  }
+
+  /* айфон: рабочий стол */
+  .ios-home { background: linear-gradient(160deg, #6a8dd8, #b07cc6 60%, #f0a3a0); height: 100%; color: #fff; }
+  .ios-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 8px; padding: 18px 14px; }
+  .app { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; }
+  .app i {
+    width: 42px; height: 42px; border-radius: 11px; display: block; background: rgba(255, 255, 255, .35);
+  }
+  .app i.gear { background: #8e8e93; display: flex; align-items: center; justify-content: center; }
+  .app i.gear svg { width: 30px; height: 30px; }
+
+  /* айфон: настройки */
+  .ios { background: #f2f2f7; height: 100%; }
+  .ios h4 { font-size: 24px; margin: 4px 16px 10px; }
+  .ios .group { background: #fff; border-radius: 10px; margin: 0 10px 14px; overflow: hidden; }
+  .ios .row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-bottom: 1px solid #e5e5ea; font-size: 13px;
+  }
+  .ios .row:last-child { border-bottom: 0; }
+  .ios .row .ic { width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
+  .ios .row .ic svg { width: 17px; height: 17px; }
+  .ios .row .r { margin-left: auto; color: #8e8e93; }
+  .ios .back { color: #007aff; padding: 4px 12px; font-size: 13px; }
+  .ios .cap { color: #6d6d72; font-size: 11px; margin: 0 22px 10px; }
+  .sw { width: 44px; height: 26px; border-radius: 13px; background: #e5e5ea; position: relative; flex: 0 0 auto; margin-left: auto; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .sw.on { background: #34c759; }
+  .sw.on::after { left: 20px; }
+
+  /* андроид */
+  .and-home { background: linear-gradient(180deg, #24476b, #4f8a8b); height: 100%; color: #fff; }
+  .swipe-arrow {
+    position: absolute; left: 50%; top: 30px; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px; color: #fff; font-weight: 700; font-size: 13px; text-align: center;
+  }
+  .swipe-dot {
+    width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, .9);
+    border: 3px solid var(--accent); animation: swipe 1.8s ease-in-out infinite;
+  }
+  @keyframes swipe { 0% { transform: translateY(-20px); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(150px); opacity: 0; } }
+  .shade { background: #1f2329; color: #e8eaed; height: 100%; padding-top: 4px; }
+  .shade .clock { font-size: 34px; font-weight: 300; padding: 6px 18px 2px; }
+  .bright { margin: 8px 16px 14px; height: 30px; border-radius: 15px; background: #3a3f47; overflow: hidden; }
+  .bright::before { content: ""; display: block; width: 60%; height: 100%; background: #a8c7fa; border-radius: 15px; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 12px; }
+  .tile {
+    border-radius: 18px; background: #3a3f47; padding: 10px 8px; display: flex; align-items: center; gap: 7px;
+    font-size: 11px; line-height: 1.2; min-height: 52px;
+  }
+  .tile svg { width: 20px; height: 20px; flex: 0 0 auto; }
+  .tile.on { background: #a8c7fa; color: #062e6f; }
+  .and-set { background: #f8f9fc; height: 100%; }
+  .and-set h4 { font-size: 20px; font-weight: 400; margin: 10px 16px 16px; }
+  .and-row { padding: 12px 16px; display: flex; align-items: center; gap: 10px; }
+  .and-row .k { font-size: 14px; }
+  .and-row .v { font-size: 12px; color: #5f6368; }
+  .pill-on { background: #d3e3fd; border-radius: 26px; margin: 0 12px 10px; padding: 14px 16px; display: flex; align-items: center; font-size: 15px; }
+  .pill-on .sw { background: #0b57d0; }
+  .pill-on .sw::after { left: 20px; }
+
+  /* ноутбук */
+  .laptop { width: 100%; max-width: 360px; }
+  .lid { background: #2a2a2e; border-radius: 14px 14px 4px 4px; padding: 9px; }
+  .desk {
+    position: relative; height: 250px; overflow: hidden; border-radius: 3px;
+    background: linear-gradient(135deg, #3b6fd1, #7aa7ec 50%, #c6dbf7);
+    font-size: 11px; color: #111;
+  }
+  .base { height: 12px; background: linear-gradient(#d6d6da, #a9a9ae); border-radius: 0 0 14px 14px; margin: 0 -14px; }
+  .taskbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 28px;
+    background: rgba(240, 243, 249, .95); display: flex; align-items: center; padding: 0 6px; gap: 6px;
+  }
+  .taskbar .mid { margin: 0 auto; display: flex; gap: 6px; }
+  .taskbar .mid i { width: 16px; height: 16px; border-radius: 4px; background: #9bb4dd; display: block; }
+  .taskbar .mid i:first-child { background: #0067c0; }
+  .tray { display: flex; align-items: center; gap: 3px; padding: 3px 6px; border-radius: 5px; }
+  .tray svg { width: 15px; height: 15px; }
+  .clock-w { font-size: 9px; text-align: right; line-height: 1.15; }
+  .zoom-note { font-size: .8rem; color: var(--soft); text-align: center; margin-top: 4px; }
+
+  .panel {
+    position: absolute; right: 8px; bottom: 34px; width: 210px; border-radius: 9px;
+    background: #f3f3f3; box-shadow: 0 6px 20px rgba(0, 0, 0, .3); padding: 10px; font-size: 10px;
+  }
+  .qs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .qs .q { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 8.5px; text-align: center; }
+  .qs .btn { width: 100%; height: 28px; border-radius: 5px; background: #fff; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; }
+  .qs .btn svg { width: 13px; height: 13px; }
+  .qs .btn.on { background: var(--win); border-color: var(--win); }
+  .qs .split { display: flex; width: 100%; gap: 1px; }
+  .qs .split .btn { flex: 1; }
+  .qs .split .arr { flex: 0 0 22px; color: #fff; font-weight: 800; font-size: 13px; }
+  .slider { height: 4px; background: #ccc; border-radius: 2px; margin: 12px 6px 4px; position: relative; }
+  .slider::before { content: ""; position: absolute; left: 0; top: 0; height: 4px; width: 55%; background: var(--win); border-radius: 2px; }
+
+  .nets { padding: 8px; }
+  .nets .hdr { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+  .nets .hdr .sw { width: 30px; height: 16px; background: var(--win); }
+  .nets .hdr .sw::after { width: 12px; height: 12px; top: 2px; left: 16px; }
+  .net { display: flex; align-items: center; gap: 7px; padding: 6px; border-radius: 5px; font-size: 10.5px; }
+  .net svg { width: 15px; height: 15px; flex: 0 0 auto; }
+  .net small { display: block; color: #666; font-size: 8.5px; }
+  .net.sel { background: #fff; flex-wrap: wrap; }
+  .net .chk { width: 100%; display: flex; align-items: center; gap: 5px; font-size: 9px; padding: 4px 0 0 22px; }
+  .net .chk b { width: 11px; height: 11px; border-radius: 2px; background: var(--win); color: #fff; font-size: 8px; display: inline-flex; align-items: center; justify-content: center; }
+  .wbtn { background: var(--win); color: #fff; border-radius: 4px; padding: 4px 12px; font-size: 9.5px; display: inline-block; }
+  .wbtn.gray { background: #e3e3e3; color: #111; }
+  .pwd { width: 100%; background: #fff; border: 1px solid #999; border-bottom: 2px solid var(--win); border-radius: 3px; padding: 4px 6px; margin: 4px 0 6px; font-size: 10px; letter-spacing: 2px; }
+
+  /* финал и помощь */
+  .yay { text-align: center; padding: 26px 16px; background: var(--ok-soft); border-radius: 22px; margin-top: 18px; }
+  .yay .big { font-size: 3rem; }
+  .yay h3 { margin: 6px 0; font-size: 1.3rem; }
+  details {
+    background: var(--card); border-radius: 16px; margin: 10px 0; padding: 0 16px;
+    box-shadow: 0 2px 0 var(--line);
+  }
+  summary { cursor: pointer; font-weight: 700; padding: 16px 0; list-style: none; display: flex; gap: 10px; align-items: flex-start; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "＋"; color: var(--accent); font-weight: 800; }
+  details[open] summary::before { content: "－"; }
+  details .body { padding: 0 0 14px; }
+  details ul { padding-left: 1.2em; margin: 6px 0; }
+  details li { margin: 6px 0; }
+  .again { background: var(--ok-soft); border-radius: 18px; padding: 14px 16px; margin: 14px 0; font-size: .95rem; }
+  .reset { display: block; margin: 30px auto 0; background: none; border: 0; color: var(--soft); font: inherit; font-size: .85rem; text-decoration: underline; cursor: pointer; }
+  footer { text-align: center; color: var(--soft); font-size: .85rem; margin-top: 30px; }
+
+  @media (max-width: 380px) {
+    :root { --fs: 18px; }
+    .phone { width: 210px; }
+    .phone .screen { height: 380px; }
+  }
+  @media print {
+    .fontbar, .donebtn, .reset, .choose, .pick-hint { display: none !important; }
+    .step { break-inside: avoid; box-shadow: none; border: 1px solid #ccc; }
+    .tap::after, .finger, .swipe-dot { animation: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tap::after, .finger, .swipe-dot { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Значки, которые используются в картинках -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path fill="currentColor" d="M12 20.5a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6zM5.6 13.3l1.6 1.6a6.8 6.8 0 0 1 9.6 0l1.6-1.6a9.1 9.1 0 0 0-12.8 0zM2.3 10l1.6 1.6a11.5 11.5 0 0 1 16.2 0L21.7 10a13.8 13.8 0 0 0-19.4 0z"/></symbol>
+    <symbol id="i-hotspot" viewBox="0 0 24 24"><path fill="currentColor" d="M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 2a6 6 0 1 0-9 5.2l1-1.7a4 4 0 1 1 4 0l1 1.7A6 6 0 0 0 18 13zM12 3a10 10 0 0 0-5 18.7l1-1.7a8 8 0 1 1 8 0l1 1.7A10 10 0 0 0 12 3z"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path fill="currentColor" d="M10.6 13.4a1 1 0 0 0 1.4 0l4-4a3 3 0 0 0-4.2-4.2l-1.5 1.5 1.4 1.4 1.5-1.5a1 1 0 0 1 1.4 1.4l-4 4a1 1 0 0 0 0 1.4zm2.8-2.8a1 1 0 0 0-1.4 0l-4 4a3 3 0 0 0 4.2 4.2l1.5-1.5-1.4-1.4-1.5 1.5a1 1 0 0 1-1.4-1.4l4-4a1 1 0 0 0 0-1.4z"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></symbol>
+    <symbol id="i-bt" viewBox="0 0 24 24"><path fill="currentColor" d="M17.7 7.7 12 2h-1v7.6L6.4 5 5 6.4l5.6 5.6L5 17.6 6.4 19l4.6-4.6V22h1l5.7-5.7-4.3-4.3 4.3-4.3zM13 5.8l1.9 1.9L13 9.6V5.8zm1.9 10.5L13 18.2v-3.8l1.9 1.9z"/></symbol>
+    <symbol id="i-data" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4 3 8h3v7h2V8h3L7 4zm10 16 4-4h-3V9h-2v7h-3l4 4z"/></symbol>
+    <symbol id="i-plane" viewBox="0 0 24 24"><path fill="currentColor" d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></symbol>
+    <symbol id="i-light" viewBox="0 0 24 24"><path fill="currentColor" d="M6 2h12v5l-3 4v11H9V11L6 7V2zm6 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M12.3 2a10 10 0 1 0 9.7 12.3A8 8 0 0 1 12.3 2z"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></symbol>
+    <symbol id="i-batt" viewBox="0 0 24 24"><path fill="currentColor" d="M2 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8zm2 0v8h11V8H4z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9V7A5 5 0 0 0 7 7v2H5v13h14V9h-2zM9 7a3 3 0 0 1 6 0v2H9V7z"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path fill="currentColor" d="M12 5C6 5 2 12 2 12s4 7 10 7 10-7 10-7-4-7-10-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <div class="fontbar">
+    <button id="fminus" aria-label="Мельче">А−</button>
+    <button id="fplus" aria-label="Крупнее">А+</button>
+  </div>
+
+  <h1>Как подключить ноутбук к интернету через телефон</h1>
+  <p class="lead">Телефон раздаёт интернет, как роутер, а ноутбук к нему подключается. Это делается за пару минут. Иди по шагам сверху вниз и смотри на картинки: <b class="hl">оранжевый кружок</b> показывает, куда нажимать.</p>
+
+  <h2><span class="ico">📱</span> Какой у тебя телефон?</h2>
+  <div class="choose">
+    <button data-pick="iphone">
+      <svg viewBox="0 0 64 64"><rect x="16" y="4" width="32" height="56" rx="7" fill="#1d1d1f"/><rect x="19" y="9" width="26" height="46" rx="4" fill="#9fb6e8"/><path d="M32 22c1.2-1.4 1-2.9 1-2.9s-1.4.1-2.5 1.3c-1 1.1-.9 2.6-.9 2.6s1.3.1 2.4-1zm3.3 6.7c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.1.8s-1.6-.7-2.7-.7c-1.4 0-2.7.8-3.4 2.1-1.5 2.5-.4 6.2 1 8.3.7 1 1.5 2.1 2.6 2 1 0 1.4-.7 2.7-.7s1.6.7 2.7.6c1.1 0 1.8-1 2.5-2 .8-1.1 1.1-2.2 1.1-2.3 0 0-2.2-.8-2.2-3.3z" fill="#fff"/></svg>
+      <span class="t">Айфон</span>
+      <span class="s">сзади яблочко</span>
+    </button>
+    <button data-pick="android">
+      <svg viewBox="0 0 64 64"><rect x="16" y="4" width="32" height="56" rx="7" fill="#1d1d1f"/><rect x="19" y="9" width="26" height="46" rx="4" fill="#9fd8b4"/><path d="M24 36a8 8 0 0 1 16 0H24zm4.5-3.2a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM26 27l2 3m10-3-2 3" stroke="#1b6b3a" stroke-width="1.6" fill="#1b6b3a" stroke-linecap="round"/></svg>
+      <span class="t">Андроид</span>
+      <span class="s">Samsung, Xiaomi, Redmi, Honor и другие</span>
+    </button>
+  </div>
+  <p class="pick-hint">Нажми на свой телефон 👆</p>
+
+  <div class="after-choice">
+
+    <div class="again">
+      <b>Уже подключалась раньше?</b> Тогда всё проще: включи на телефоне раздачу (шаги 1–<span class="lastphone">3</span>), и ноутбук сам подключится через полминуты. Если не подключился — делай шаги дальше.
+    </div>
+
+    <h2><span class="ico">📱</span> Сначала — телефон</h2>
+
+    <!-- ===== АЙФОН ===== -->
+    <section class="step" data-only="iphone">
+      <div class="step-head"><div class="num"></div><h3>Открой «Настройки»</h3></div>
+      <p class="txt">Найди на экране серый значок с шестерёнкой и нажми на него.</p>
+      <div class="pic">
+        <div class="phone"><div class="screen ios-home">
+          <div class="statusbar"><span>12:30</span><span>●●● 4G ▮</span></div>
+          <div class="ios-grid">
+            <div class="app"><i></i>Фото</div><div class="app"><i></i>Камера</div><div class="app"><i></i>Почта</div><div class="app"><i></i>Часы</div>
+            <div class="app"><i></i>Карты</div><div class="app"><i></i>Погода</div><div class="app"><i></i>Заметки</div>
+            <div class="app" style="position:relative"><i class="gear tap"><svg style="color:#fff"><use href="#i-gear"/></svg></i>Настройки<span class="finger" style="right:-6px;top:30px">👆</span></div>
+            <div class="app"><i></i>App Store</div><div class="app"><i></i>Музыка</div><div class="app"><i></i>Здоровье</div><div class="app"><i></i>Кошелёк</div>
+          </div>
+        </div></div>
+      </div>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step" data-only="iphone">
+      <div class="step-head"><div class="num"></div><h3>Нажми «Режим модема»</h3></div>
+      <p class="txt">Он в самом верху списка, с зелёным значком из двух звеньев цепочки.</p>
+      <p class="txt" style="font-size:.9rem;color:var(--soft)">Если его там нет — нажми «Сотовая связь», а внутри уже «Режим модема».</p>
+      <div class="pic">
+        <div class="phone"><div class="screen ios">
+          <div class="statusbar"><span>12:30</span><span>●●● 4G ▮</span></div>
+          <h4>Настройки</h4>
+          <div class="group">
+            <div class="row"><span class="ic" style="background:#ff9500"><svg style="color:#fff"><use href="#i-plane"/></svg></span>Авиарежим<span class="sw"></span></div>
+            <div class="row"><span class="ic" style="background:#007aff"><svg style="color:#fff"><use href="#i-wifi"/></svg></span>Wi-Fi<span class="r">Выкл. ›</span></div>
+            <div class="row"><span class="ic" style="background:#007aff"><svg style="color:#fff"><use href="#i-bt"/></svg></span>Bluetooth<span class="r">Вкл. ›</span></div>
+            <div class="row"><span class="ic" style="background:#34c759"><svg style="color:#fff"><use href="#i-data"/></svg></span>Сотовая связь<span class="r">›</span></div>
+            <div class="row tap" style="border-radius:8px;position:relative"><span class="ic" style="background:#34c759"><svg style="color:#fff"><use href="#i-link"/></svg></span><b>Режим модема</b><span class="r">Выкл. ›</span><span class="finger" style="right:30px;top:18px">👆</span></div>
+          </div>
+          <div class="group">
+            <div class="row"><span class="ic" style="background:#ff3b30"></span>Уведомления<span class="r">›</span></div>
+            <div class="row"><span class="ic" style="background:#ff2d55"></span>Звуки<span class="r">›</span></div>
+          </div>
+        </div></div>
+      </div>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step" data-only="iphone">
+      <div class="step-head"><div class="num"></div><h3>Включи «Разрешать другим»</h3></div>
+      <p class="txt">Нажми на переключатель — он станет <b style="color:#34c759">зелёным</b>.</p>
+      <p class="txt">Ниже написан <b>пароль</b> (строчка «Пароль Wi-Fi») — он понадобится для ноутбука. А в сером тексте написано <b>название сети</b>, обычно просто «iPhone».</p>
+      <div class="pic">
+        <div class="phone"><div class="screen ios">
+          <div class="statusbar"><span>12:30</span><span>●●● 4G ▮</span></div>
+          <div class="back">‹ Настройки</div>
+          <h4 style="font-size:20px">Режим модема</h4>
+          <div class="group">
+            <div class="row" style="position:relative">Разрешать другим<span class="sw on tap" style="border-radius:13px"></span><span class="finger" style="right:-4px;top:26px">👆</span></div>
+            <div class="row" style="background:#fff7d6">Пароль Wi-Fi<span class="r" style="color:#111"><b>abcd1234</b> ›</span></div>
+          </div>
+          <p class="cap">Другие пользователи могут найти Вашу общую сеть через Wi-Fi и Bluetooth под именем <b style="color:#111;background:#fff7d6">«iPhone»</b>.</p>
+          <div class="group">
+            <div class="row">Максимальная совместимость<span class="sw"></span></div>
+          </div>
+        </div></div>
+      </div>
+      <div class="note">⚠️ <b>Не выключай экран телефона и не закрывай эту страницу</b>, пока ноутбук не подключится. Айфон любит прятать сеть, когда экран погас.</div>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <!-- ===== АНДРОИД ===== -->
+    <section class="step" data-only="android">
+      <div class="step-head"><div class="num"></div><h3>Проведи пальцем сверху вниз</h3></div>
+      <p class="txt">Поставь палец на самый верхний край экрана и потяни вниз. Откроется «шторка» с кнопками. Потяни <b>ещё раз вниз</b>, чтобы она раскрылась полностью.</p>
+      <div class="pic">
+        <div class="phone"><div class="screen and-home">
+          <div class="statusbar"><span>12:30</span><span>4G ▮</span></div>
+          <div class="swipe-arrow"><div class="swipe-dot"></div></div>
+          <div style="position:absolute;bottom:90px;left:0;right:0;text-align:center;font-size:15px;font-weight:700">тяни вниз ⬇️<br><span style="font-weight:400;font-size:12px">и ещё раз вниз</span></div>
+        </div></div>
+      </div>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step" data-only="android">
+      <div class="step-head"><div class="num"></div><h3>Нажми «Точка доступа»</h3></div>
+      <p class="txt">Найди кнопку со значком из кружочков-волн. Она может называться «Точка доступа», «Мобильная точка доступа» или «Модем». Нажми — она станет <b>цветной</b>.</p>
+      <p class="txt">Кнопка <b>«Мобильные данные»</b> тоже должна быть цветной — без неё интернета не будет.</p>
+      <p class="txt" style="font-size:.9rem;color:var(--soft)">Не видно такой кнопки? Полистай кнопки вбок (влево). Или открой «Настройки», вверху в поиске напиши «точка доступа».</p>
+      <div class="pic">
+        <div class="phone"><div class="screen shade">
+          <div class="statusbar"><span></span><span>4G ▮</span></div>
+          <div class="clock">12:30</div>
+          <div class="bright"></div>
+          <div class="tiles">
+            <div class="tile"><svg><use href="#i-wifi"/></svg>Wi-Fi</div>
+            <div class="tile on" style="outline:3px solid #7bdc9b">
+              <svg><use href="#i-data"/></svg>Мобильные данные</div>
+            <div class="tile"><svg><use href="#i-bt"/></svg>Bluetooth</div>
+            <div class="tile"><svg><use href="#i-light"/></svg>Фонарик</div>
+            <div class="tile on tap" style="position:relative"><svg><use href="#i-hotspot"/></svg>Точка доступа<span class="finger" style="right:-10px;top:34px">👆</span></div>
+            <div class="tile"><svg><use href="#i-moon"/></svg>Не беспокоить</div>
+            <div class="tile"><svg><use href="#i-plane"/></svg>Режим полёта</div>
+            <div class="tile"><svg><use href="#i-sound"/></svg>Звук</div>
+          </div>
+        </div></div>
+      </div>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step" data-only="android">
+      <div class="step-head"><div class="num"></div><h3>Посмотри название и пароль</h3></div>
+      <p class="txt"><b>Нажми на эту же кнопку и подержи палец 2 секунды</b> — откроются её настройки. Там будет:</p>
+      <ul style="margin:6px 0">
+        <li><b>Имя сети</b> — так телефон будет называться на ноутбуке;</li>
+        <li><b>Пароль</b> — если вместо него точки, нажми на значок глазика 👁, чтобы увидеть буквы.</li>
+      </ul>
+      <p class="txt" style="font-size:.9rem;color:var(--soft)">Можно записать их на бумажку, чтобы не переключаться туда-сюда.</p>
+      <div class="pic">
+        <div class="phone"><div class="screen and-set">
+          <div class="statusbar"><span>12:30</span><span>4G ▮</span></div>
+          <div style="padding:4px 16px;font-size:18px">←</div>
+          <h4>Точка доступа</h4>
+          <div class="pill-on">Включено<span class="sw"></span></div>
+          <div class="and-row" style="background:#fff7d6"><div><div class="k">Имя сети</div><div class="v" style="color:#111"><b class="netname">Galaxy A52</b></div></div></div>
+          <div class="and-row" style="background:#fff7d6;position:relative"><div><div class="k">Пароль</div><div class="v" style="color:#111"><b>abcd1234</b></div></div>
+            <svg class="tap round" style="width:26px;height:26px;margin-left:auto;color:#444;border-radius:50%"><use href="#i-eye"/></svg>
+            <span class="finger" style="right:2px;top:36px">👆</span></div>
+          <div class="and-row"><div><div class="k">Безопасность</div><div class="v">WPA2-Personal</div></div></div>
+          <div class="and-row"><div><div class="k">Диапазон</div><div class="v">2,4 ГГц</div></div></div>
+        </div></div>
+      </div>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <!-- ===== НОУТБУК ===== -->
+    <h2><span class="ico">💻</span> Теперь — ноутбук</h2>
+
+    <section class="step">
+      <div class="step-head"><div class="num"></div><h3>Нажми на значок Wi-Fi внизу справа</h3></div>
+      <p class="txt">Посмотри в правый нижний угол экрана, рядом с часами. Там есть значок «веер» <svg style="width:1em;height:1em;vertical-align:-2px"><use href="#i-wifi"/></svg> (или глобус 🌐). Нажми на него один раз.</p>
+      <div class="pic">
+        <div class="laptop"><div class="lid"><div class="desk">
+          <div class="taskbar">
+            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="tray tap" style="position:relative">
+              <svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg>
+              <span class="finger" style="left:-2px;top:-34px;transform:rotate(180deg);animation:none">👆</span>
+            </div>
+            <div class="clock-w">12:30<br>29.10.2026</div>
+          </div>
+        </div></div><div class="base"></div></div>
+      </div>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><div class="num"></div><h3>Нажми стрелочку <b>›</b> возле Wi-Fi</h3></div>
+      <p class="txt">Откроется окошко с квадратными кнопками. У кнопки Wi-Fi справа есть маленькая стрелочка <b>›</b> — нажми на неё.</p>
+      <div class="note">💡 Если после прошлого шага <b>сразу появился список сетей</b> — значит, у тебя другая Windows. Этот шаг просто пропусти и переходи к следующему.</div>
+      <div class="pic">
+        <div class="laptop"><div class="lid"><div class="desk">
+          <div class="panel">
+            <div class="qs">
+              <div class="q"><div class="split"><div class="btn on" style="border-radius:5px 0 0 5px"><svg style="color:#fff"><use href="#i-wifi"/></svg></div><div class="btn on arr tap" style="border-radius:0 5px 5px 0;position:relative">›<span class="finger" style="left:4px;top:18px;font-size:24px">👆</span></div></div>Wi-Fi</div>
+              <div class="q"><div class="split"><div class="btn on" style="border-radius:5px 0 0 5px"><svg style="color:#fff"><use href="#i-bt"/></svg></div><div class="btn on arr" style="border-radius:0 5px 5px 0">›</div></div>Bluetooth</div>
+              <div class="q"><div class="btn"><svg><use href="#i-plane"/></svg></div>Режим «в самолёте»</div>
+              <div class="q"><div class="btn"><svg><use href="#i-batt"/></svg></div>Экономия заряда</div>
+              <div class="q"><div class="btn"><svg><use href="#i-moon"/></svg></div>Ночной свет</div>
+              <div class="q"><div class="btn"><svg><use href="#i-hotspot"/></svg></div>Хот-спот</div>
+            </div>
+            <div class="slider"></div>
+          </div>
+          <div class="taskbar">
+            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="tray" style="background:#dfe5ef"><svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg></div>
+            <div class="clock-w">12:30<br>29.10.2026</div>
+          </div>
+        </div></div><div class="base"></div></div>
+      </div>
+      <p class="zoom-note">Кнопка Wi-Fi должна быть синей. Если серая — сначала нажми на неё саму.</p>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><div class="num"></div><h3>Выбери свой телефон в списке</h3></div>
+      <p class="txt">В списке сетей найди название своего телефона — <b class="hl netname">iPhone</b> (то, что было на телефоне в шаге <span class="namestep">3</span>). Нажми на него.</p>
+      <p class="txt">Поставь галочку <b>«Подключаться автоматически»</b> и нажми синюю кнопку <b>«Подключиться»</b>.</p>
+      <div class="pic">
+        <div class="laptop"><div class="lid"><div class="desk">
+          <div class="panel nets" style="width:215px">
+            <div class="hdr">‹ Wi-Fi<span class="sw" style="margin-left:auto"></span></div>
+            <div class="net sel">
+              <svg><use href="#i-wifi"/></svg><div><b class="netname">iPhone</b><small>Защищённая</small></div>
+              <div class="chk"><b>✓</b>Подключаться автоматически</div>
+              <div style="width:100%;text-align:right;padding-top:4px;position:relative"><span class="wbtn tap" style="border-radius:4px">Подключиться</span><span class="finger" style="right:14px;top:18px;font-size:24px">👆</span></div>
+            </div>
+            <div class="net"><svg><use href="#i-wifi"/></svg><div>TP-Link_5F2A<small>Защищённая</small></div></div>
+            <div class="net"><svg><use href="#i-wifi"/></svg><div>Rostelecom_77<small>Защищённая</small></div></div>
+          </div>
+          <div class="taskbar">
+            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="tray" style="background:#dfe5ef"><svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg></div>
+            <div class="clock-w">12:30<br>29.10.2026</div>
+          </div>
+        </div></div><div class="base"></div></div>
+      </div>
+      <p class="zoom-note">Чужие сети (соседей) не трогай — нужна только та, что с названием твоего телефона.</p>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><div class="num"></div><h3>Введи пароль и нажми «Далее»</h3></div>
+      <p class="txt">Появится белое поле «Введите ключ безопасности сети». Напечатай туда <b>пароль с телефона</b> и нажми <b>«Далее»</b>.</p>
+      <ul style="margin:6px 0">
+        <li>Буквы — <b>английские</b>. Если печатаются русские, нажми одновременно <b>Shift + Alt</b> (или посмотри на «РУС/ENG» внизу справа и нажми туда).</li>
+        <li>Большие и маленькие буквы важны — печатай точно как на телефоне.</li>
+      </ul>
+      <div class="pic">
+        <div class="laptop"><div class="lid"><div class="desk">
+          <div class="panel nets" style="width:215px">
+            <div class="hdr">‹ Wi-Fi<span class="sw" style="margin-left:auto"></span></div>
+            <div class="net sel" style="display:block">
+              <div style="display:flex;gap:7px;align-items:center"><svg><use href="#i-wifi"/></svg><b class="netname">iPhone</b></div>
+              <div style="padding:4px 0 0 22px">
+                Введите ключ безопасности сети
+                <div class="pwd tap" style="border-radius:3px">abcd1234</div>
+                <div style="display:flex;gap:6px;justify-content:flex-end;position:relative"><span class="wbtn">Далее</span><span class="wbtn gray">Отмена</span><span class="finger" style="right:60px;top:14px;font-size:24px">👆</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="taskbar">
+            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="tray" style="background:#dfe5ef"><svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg></div>
+            <div class="clock-w">12:30<br>29.10.2026</div>
+          </div>
+        </div></div><div class="base"></div></div>
+      </div>
+      <p class="zoom-note">Если ноутбук спросит «Разрешить другим устройствам обнаруживать этот компьютер?» — нажми «Нет».</p>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <section class="step">
+      <div class="step-head"><div class="num"></div><h3>Проверь: «Подключено»</h3></div>
+      <p class="txt">Под названием телефона должно появиться слово <b style="color:var(--ok)">«Подключено»</b>. Значок внизу справа станет «веером». Всё, интернет есть — можно открывать браузер!</p>
+      <div class="pic">
+        <div class="laptop"><div class="lid"><div class="desk">
+          <div class="panel nets" style="width:215px">
+            <div class="hdr">‹ Wi-Fi<span class="sw" style="margin-left:auto"></span></div>
+            <div class="net sel" style="outline:2px solid var(--ok)"><svg><use href="#i-wifi"/></svg><div><b class="netname">iPhone</b><small style="color:var(--ok);font-weight:700">Подключено, защищено</small></div>
+              <div style="width:100%;text-align:right;padding-top:4px"><span class="wbtn gray">Отключиться</span></div></div>
+            <div class="net"><svg><use href="#i-wifi"/></svg><div>TP-Link_5F2A<small>Защищённая</small></div></div>
+          </div>
+          <div class="taskbar">
+            <div class="mid"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="tray" style="background:#dfe5ef"><svg><use href="#i-wifi"/></svg><svg><use href="#i-sound"/></svg><svg><use href="#i-batt"/></svg></div>
+            <div class="clock-w">12:30<br>29.10.2026</div>
+          </div>
+        </div></div><div class="base"></div></div>
+      </div>
+      <button class="donebtn">✓ Сделала</button>
+    </section>
+
+    <div class="yay">
+      <div class="big">🎉</div>
+      <h3>Готово! Ты молодец!</h3>
+      <p>В следующий раз будет проще: включи раздачу на телефоне — и ноутбук подключится сам.</p>
+    </div>
+
+    <h2><span class="ico">⏹</span> Как выключить</h2>
+    <p>Когда интернет на ноутбуке больше не нужен — выключи раздачу на телефоне, чтобы он не тратил батарею и гигабайты:</p>
+    <p data-only="iphone">Настройки → Режим модема → выключи «Разрешать другим» (станет серым).</p>
+    <p data-only="android">Шторка сверху → нажми ещё раз на «Точка доступа» (станет серой).</p>
+
+    <h2><span class="ico">🆘</span> Не получается?</h2>
+
+    <details>
+      <summary>Ноутбук не видит мой телефон в списке</summary>
+      <div class="body"><ul>
+        <li>Проверь, что раздача на телефоне включена (шаг <span class="onstep">2</span>).</li>
+        <li data-only="iphone">Открой на айфоне страницу «Режим модема» и <b>не закрывай её</b>, пока ищешь сеть на ноутбуке.</li>
+        <li data-only="iphone">Включи там же «Максимальная совместимость» (переключатель внизу).</li>
+        <li>Подожди 30 секунд — список обновляется не сразу. Можно закрыть окошко на ноутбуке и открыть снова.</li>
+        <li>Положи телефон поближе к ноутбуку.</li>
+        <li>Если ничего не помогает — выключи раздачу на телефоне и включи заново.</li>
+      </ul></div>
+    </details>
+
+    <details>
+      <summary>Пишет «Неверный пароль» или «Не удаётся подключиться»</summary>
+      <div class="body"><ul>
+        <li>Проверь, что печатаешь <b>английскими</b> буквами (переключение — Shift + Alt).</li>
+        <li>Проверь большие/маленькие буквы и не горит ли лампочка <b>Caps Lock</b> на клавиатуре.</li>
+        <li>Цифра 0 и буква O, цифра 1 и буква l — легко перепутать, посмотри внимательно.</li>
+      </ul></div>
+    </details>
+
+    <details>
+      <summary>Написано «Подключено», но сайты не открываются</summary>
+      <div class="body"><ul>
+        <li data-only="iphone">На айфоне: Настройки → Сотовая связь → <b>«Сотовые данные»</b> должны быть включены (зелёные).</li>
+        <li data-only="android">На телефоне в шторке кнопка <b>«Мобильные данные»</b> должна быть цветной.</li>
+        <li>Проверь на самом телефоне, работает ли интернет: открой любой сайт. Если и там нет — закончились гигабайты или деньги на счёте.</li>
+        <li>Попробуй выключить раздачу и включить снова.</li>
+      </ul></div>
+    </details>
+
+    <details>
+      <summary>Внизу справа нет значка Wi-Fi, а есть самолётик ✈️</summary>
+      <div class="body"><ul>
+        <li>Включён режим «в самолёте». Нажми на самолётик, затем на кнопку «Режим "в самолёте"», чтобы она стала серой. После этого кнопка Wi-Fi должна стать синей.</li>
+      </ul></div>
+    </details>
+
+    <details>
+      <summary>Ничего не помогло</summary>
+      <div class="body"><p>Сфотографируй экран ноутбука и экран телефона и пришли Сёме — он посмотрит. 💛</p></div>
+    </details>
+
+    <button class="reset" id="reset">Начать сначала / выбрать другой телефон</button>
+  </div>
+
+  <footer>Сделано с любовью для мамы 💛</footer>
+</div>
+
+<script>
+(function () {
+  var body = document.body;
+  var steps = [].slice.call(document.querySelectorAll('.step'));
+
+  // Размер шрифта
+  var fs = parseInt(localStorage.getItem('mw-fs'), 10) || 0;
+  function applyFs() { if (fs) document.documentElement.style.setProperty('--fs', fs + 'px'); }
+  applyFs();
+  document.getElementById('fplus').onclick = function () {
+    fs = Math.min(30, (fs || parseInt(getComputedStyle(document.documentElement).fontSize, 10)) + 2);
+    localStorage.setItem('mw-fs', fs); applyFs();
+  };
+  document.getElementById('fminus').onclick = function () {
+    fs = Math.max(14, (fs || parseInt(getComputedStyle(document.documentElement).fontSize, 10)) - 2);
+    localStorage.setItem('mw-fs', fs); applyFs();
+  };
+
+  function visibleSteps() {
+    return steps.filter(function (s) { return s.offsetParent !== null; });
+  }
+
+  function renumber() {
+    var vis = visibleSteps();
+    vis.forEach(function (s, i) { s.querySelector('.num').textContent = i + 1; });
+    // сколько шагов на телефоне (они идут первыми и помечены data-only)
+    var phoneCount = vis.filter(function (s) { return s.hasAttribute('data-only'); }).length;
+    var onStep = body.classList.contains('iphone') ? 3 : 2; // шаг, где включается раздача
+    document.querySelectorAll('.namestep').forEach(function (el) { el.textContent = phoneCount; });
+    document.querySelectorAll('.lastphone, .onstep').forEach(function (el) { el.textContent = onStep; });
+  }
+
+  function pick(kind, scroll) {
+    body.classList.remove('iphone', 'android');
+    body.classList.add(kind, 'chosen');
+    document.querySelectorAll('[data-pick]').forEach(function (b) { b.classList.toggle('on', b.dataset.pick === kind); });
+    var name = kind === 'iphone' ? 'iPhone' : 'Galaxy A52';
+    document.querySelectorAll('.netname').forEach(function (el) { el.textContent = name; });
+    localStorage.setItem('mw-phone', kind);
+    renumber();
+    if (scroll) document.querySelector('.again').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.querySelectorAll('[data-pick]').forEach(function (b) {
+    b.onclick = function () { pick(b.dataset.pick, true); };
+  });
+
+  // «Сделала» — отметить и перейти к следующему шагу
+  steps.forEach(function (s) {
+    s.querySelector('.donebtn').onclick = function () {
+      var done = !s.classList.contains('done');
+      s.classList.toggle('done', done);
+      this.textContent = done ? '✓ Готово' : '✓ Сделала';
+      if (!done) return;
+      var vis = visibleSteps();
+      var next = vis[vis.indexOf(s) + 1] || document.querySelector('.yay');
+      next.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  });
+
+  document.getElementById('reset').onclick = function () {
+    localStorage.removeItem('mw-phone');
+    steps.forEach(function (s) { s.classList.remove('done'); s.querySelector('.donebtn').textContent = '✓ Сделала'; });
+    body.classList.remove('iphone', 'android', 'chosen');
+    document.querySelectorAll('[data-pick]').forEach(function (b) { b.classList.remove('on'); });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // ?phone=iphone / ?phone=android в ссылке — сразу выбрать телефон
+  var q = (location.search.match(/phone=(iphone|android)/) || [])[1];
+  var saved = q || localStorage.getItem('mw-phone') || 'iphone'; // у мамы айфон
+  if (saved === 'iphone' || saved === 'android') pick(saved, false);
+})();
+</script>
+</body>
+</html>
