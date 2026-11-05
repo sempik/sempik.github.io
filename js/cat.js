@@ -2400,6 +2400,8 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
     `<path d="M18.6 16.4c1.6.7 2.6 2.2 2.4 3.9" fill="none" stroke="#ff8cc6" stroke-width="1.3" stroke-linecap="round"/>` +
     `<circle cx="11.5" cy="11.5" r="8" fill="url(#kexY)" stroke="#7a1d4f" stroke-width=".9"/>` +
     `<path d="M4.6 9.2c3.6.2 9 2.7 11.6 8.6M6.3 5.6c3.4 1.2 8.4 5 9.9 11.3M4 13.3c3.2-.1 7.2 2 9 5.8M11 3.6c2.8 1.7 6 5 7.2 9" fill="none" stroke="#ffe2f0" stroke-opacity=".8" stroke-width="1.1" stroke-linecap="round"/></svg></button>`;
+  // пока кнопки не показаны (кот ещё не приземлился) — их не должно быть видно и Tab'у
+  toysEl.inert = true;
   document.body.appendChild(toysEl);
   const laserBtn = toysEl.querySelector('[data-toy="laser"]');
   const yarnBtn = toysEl.querySelector('[data-toy="yarn"]');
@@ -2409,7 +2411,7 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
   function showToys() {
     if (toysShown) return;
     toysShown = true;
-    setTimeout(() => toysEl.classList.add("is-on"), 600);
+    setTimeout(() => { toysEl.inert = false; toysEl.classList.add("is-on"); }, 600);
   }
 
   function setLaser(on) {
