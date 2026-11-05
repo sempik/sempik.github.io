@@ -237,7 +237,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     x: 0, y: 0, vx: 0, vy: 0, rot: 0, vrot: 0,
     dir: 1, face: 1, surf: floorSurf,
     tumble: false, landOn: null, airT: 0, thrown: false, greet: false, pounce: false,
-    sq: 0, sqv: 0, phase: 0, task: null, moved: false, rotVis: 0,
+    sq: 0, sqv: 0, phase: 0, task: null, moved: false, rotVis: 0, hop: false,
     sx: 0, sy: 0, cmx: 0, cmy: 0, cmpx: 0, cmpy: 0,
   };
   // сглаженные параметры позы (P) и их цели (TG)
@@ -371,9 +371,9 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   let angryUntil = 0, happyUntil = 0, surpriseUntil = 0, chatter = 0;
   const clicks = [];
   let lastMeow = 0;
-  const meow = (kind) => {
+  const meow = (kind, force = false) => {
     const t = now();
-    if (t - lastMeow < 0.3) return;
+    if (!force && t - lastMeow < 0.3) return;
     lastMeow = t;
     sfx("meow", kind);
   };
@@ -512,6 +512,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     cat.vx *= wasTumble ? 0.3 : 0.15;
     cat.tumble = false;
     cat.landOn = null;
+    cat.hop = false;
     cat.sqv += clamp(impact / 1500, 0.12, 0.6) * 9;
     if (impact > 650 || (wasTumble && impact > 250)) {
       const n = RM ? 3 : 7;
@@ -913,7 +914,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     if (clicks.length >= 4) {
       clicks.length = 0;
       angryUntil = t + 1.6;
-      meow("angry");
+      meow("angry", true);
       say(ANGRY_LINE, 2.2);
       if (cat.mode === "ground") setTask("angry", { dur: 1.5 });
       return;
@@ -922,12 +923,19 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     const kinds = ["short", "question", "happy", "short"];
     meow(kinds[(Math.random() * kinds.length) | 0]);
     say(pickFresh(CLICK_LINES));
+    if (clicks.length > 1) {
+      // повторные клики — не прыгает (чтобы не «убегать» из-под курсора), а сжимается и дёргает ушами
+      cat.sqv += 4;
+      P.earL -= 0.4; P.earR += 0.4;
+      return;
+    }
     if (cat.mode === "ground") {
       // маленький подскок на месте
-      cat.vy = -rand(380, 460);
+      cat.vy = -rand(330, 400);
       cat.vx = 0;
       takeOff(false);
       cat.landOn = cat.surf;
+      cat.hop = true;
       cat.sqv -= 4;
     }
   }
@@ -1269,6 +1277,10 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     if (ground) R.headY -= mv * (1 - run) * 0.7 * Math.sin(ph * 2 + 0.6);
     if (P.dance > 0.01) R.headX += P.dance * 2 * Math.sin(t * TAU * 0.55);
     R.headRot = P.headTilt + rot * 0.25 + P.lookY * 0.08 - P.groom * 0.2;
+    // на весу и в полёте голова частично держится вертикально (как у настоящих котов)
+    if (cat.mode === "drag" || (cat.mode === "air" && cat.tumble)) {
+      R.headRot -= wrapAngle(cat.rot) * sgn(cat.face) * (cat.mode === "drag" ? 0.55 : 0.35);
+    }
     R.tailX = btX(TAIL_X, TAIL_Y);
     R.tailY = btY(TAIL_X, TAIL_Y);
 
@@ -2155,6 +2167,14 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
   function hitCat(x, y, pad) {
     if (!cat.vis || cat.mode === "hidden") return false;
+    // во время подскока от клика считаем попаданием и место, где кот стоял
+    if (cat.hop && cat.mode === "air" && cat.landOn) {
+      const lift = cat.landOn.top - cat.y;
+      if (lift > 2 && hitCatAt(x, y - lift, pad)) return true;
+    }
+    return hitCatAt(x, y, pad);
+  }
+  function hitCatAt(x, y, pad) {
     let dx = x - headWX, dy = y - headWY;
     const hr = 23 * K + pad;
     if (dx * dx + dy * dy < hr * hr) return true;
