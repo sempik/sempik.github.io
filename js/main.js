@@ -1,7 +1,17 @@
 // Точка входа: грузит модули независимо друг от друга (если один упал — остальные работают)
 // и связывает их между собой. Сами фичи живут в ui.js / scene3d.js / cat.js / audio.js.
+//
+// Порядок: ui.js + audio.js маленькие — как только они пришли, заставку уже можно закрыть.
+// 3D-сцена (three.js ~700 КБ) и кот подключаются, когда догрузятся; если человек вошёл раньше —
+// они сразу появляются (reveal / drop) по прибытии.
 import { CONFIG } from "./config.js";
 import { ICONS } from "./icons.js";
+
+// ссылка с невписанной заглушкой ника (вида XXX_HANDLE) на сайт не попадает
+const isPlaceholder = (s) => typeof s === "string" && /\b[A-Z]+_HANDLE\b/.test(s);
+if (Array.isArray(CONFIG.links)) {
+  CONFIG.links = CONFIG.links.filter((l) => l && !isPlaceholder(l.url) && !isPlaceholder(l.copy) && !isPlaceholder(l.sub));
+}
 
 const env = {
   reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -19,38 +29,37 @@ const safe = (label, fn) => {
   try { return fn(); } catch (e) { console.error(`[sempik] ${label}`, e); return null; }
 };
 
-const [uiM, sceneM, catM, audioM] = await Promise.all(["ui", "scene3d", "cat", "audio"].map(load));
+const pUI = load("ui");
+const pAudio = load("audio");
+const pScene = load("scene3d");
+const pCat = load("cat");
+
+const [uiM, audioM] = await Promise.all([pUI, pAudio]);
 
 const audio = safe("audio", () => audioM?.createAudio?.({ config: CONFIG, env })) || null;
 let ui = null;
-
-const scene = safe("scene3d", () =>
-  sceneM?.initScene?.({
-    canvas: document.getElementById("scene3d"),
-    config: CONFIG,
-    icons: ICONS,
-    audio,
-    env,
-    onLinkActivate: (link) => ui?.activateLink?.(link),
-  })
-);
-
-const cat = safe("cat", () =>
-  catM?.initCat?.({
-    canvas: document.getElementById("cat-layer"),
-    config: CONFIG,
-    audio,
-    env,
-    toast: (msg) => ui?.toast?.(msg),
-  })
-);
-
+let scene = null;
+let cat = null;
 let entered = false;
+let gesture = true; // onEnter вызван из клика/клавиши (можно включать звук)
+
+// звук можно разбудить только в жесте пользователя — если вошли без жеста, ждём первого касания
+function armUnlock() {
+  const go = () => {
+    removeEventListener("pointerdown", go, true);
+    removeEventListener("keydown", go, true);
+    safe("audio.unlock", () => audio?.unlock?.());
+  };
+  addEventListener("pointerdown", go, { capture: true });
+  addEventListener("keydown", go, { capture: true });
+}
+
 function onEnter() {
   // вызывается синхронно из клика по заставке — это и есть «жест пользователя» для звука
   if (entered) return;
   entered = true;
-  safe("audio.unlock", () => audio?.unlock?.());
+  if (gesture) safe("audio.unlock", () => audio?.unlock?.());
+  else armUnlock();
   safe("scene.reveal", () => scene?.reveal?.());
   safe("cat.drop", () => cat?.drop?.());
   document.documentElement.classList.add("entered");
@@ -59,11 +68,54 @@ function onEnter() {
 
 ui = safe("ui", () => uiM?.initUI?.({ config: CONFIG, icons: ICONS, audio, env, onEnter }));
 
+// для отладки из консоли (scene / cat появятся, когда догрузятся)
+const dbg = { CONFIG, env, audio, ui, scene: null, cat: null };
+window.sempik = dbg;
+
 // если ui.js не поднялся — не оставляем человека перед вечной заставкой
 if (!ui) {
   document.getElementById("splash")?.remove();
+  gesture = false;
   onEnter();
 }
+
+// ---------------------------------------------------------------- 3D-сцена
+pScene.then((m) => {
+  scene = safe("scene3d", () =>
+    m?.initScene?.({
+      canvas: document.getElementById("scene3d"),
+      config: CONFIG,
+      icons: ICONS,
+      audio,
+      env,
+      onLinkActivate: (link) => ui?.activateLink?.(link),
+    })
+  );
+  dbg.scene = scene;
+  if (scene && entered) safe("scene.reveal", () => scene.reveal?.());
+  if (scene?.anchor) setupBackdrop();
+});
+
+// ---------------------------------------------------------------- кот
+pCat.then((m) => {
+  cat = safe("cat", () =>
+    m?.initCat?.({
+      canvas: document.getElementById("cat-layer"),
+      config: CONFIG,
+      audio,
+      env,
+      toast: (msg) => ui?.toast?.(msg),
+    })
+  );
+  dbg.cat = cat;
+  if (cat && entered) safe("cat.drop", () => cat.drop?.());
+});
+
+// все модули на месте (или отвалились) — можно качать фоновое видео, не отнимая канал у three.js
+Promise.allSettled([pScene, pCat]).then(() => {
+  window.__sempikLoaded = true;
+  window.dispatchEvent(new CustomEvent("sempik:loaded"));
+});
 
 // Фон: в ролике есть кольцо-«затмение» (центр в 69.5% / 45% кадра 1920x1080, см. tools/motion-bg).
 // Ставим его ровно за гало 3D-острова, чтобы кольца были концентричны на любом экране.
@@ -103,7 +155,7 @@ function alignBackdrop() {
     height: `${h.toFixed(1)}px`,
   });
 }
-if (scene?.anchor) {
+function setupBackdrop() {
   let q = 0;
   const queue = () => {
     cancelAnimationFrame(q);
@@ -114,6 +166,3 @@ if (scene?.anchor) {
   addEventListener("resize", queue, { passive: true });
   addEventListener("orientationchange", queue, { passive: true });
 }
-
-// для отладки из консоли
-window.sempik = { CONFIG, env, audio, ui, scene, cat };

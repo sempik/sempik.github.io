@@ -26,8 +26,8 @@ export const CONFIG = {
   links: [
     { id: "discord",  name: "Discord",  sub: "babazina",         copy: "babazina",                                            color: "#5865F2" },
     { id: "github",   name: "GitHub",   sub: "@sempik",          url: "https://github.com/sempik",                           color: "#f0f6fc" },
-    // Telegram: замени TELEGRAM_HANDLE на свой ник (без @) — кнопка и 3D-логотип появятся сами.
-    // Пока стоит заглушка, ссылка на сайте не показывается.
+    // Telegram: впиши свой ник (без @) вместо заглушки в двух местах строки ниже — кнопка и 3D-логотип
+    // появятся сами. Пока стоит заглушка, ссылка на сайте не показывается.
     { id: "telegram", name: "Telegram", sub: "@TELEGRAM_HANDLE", url: "https://t.me/TELEGRAM_HANDLE",                     color: "#29A9EB" },
     { id: "steam",    name: "Steam",    sub: "профиль",          url: "https://steamcommunity.com/profiles/76561199049345067/", color: "#66c0f4" },
   ],

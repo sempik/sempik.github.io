@@ -258,7 +258,9 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
 
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
+    renderer = new THREE.WebGLRenderer({
+      canvas, alpha: true, antialias: (window.devicePixelRatio || 1) < 1.5, powerPreference: 'high-performance',
+    });
   } catch (e) {
     console.warn('[sempik] WebGL недоступен — 3D-сцена выключена', e);
     canvas.style.display = 'none';
@@ -274,8 +276,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     canvas.style.width = '100%';
     canvas.style.height = '100%';
   }
-  // горизонтальный свайп крутит остров, вертикальный — скроллит страницу
-  canvas.style.touchAction = 'pan-y';
+  // горизонтальный свайп крутит остров, вертикальный — скроллит страницу, щипок — зумит
+  canvas.style.touchAction = 'pan-y pinch-zoom';
 
   const theme = Object.assign(
     { pink: '#ff8cc6', hot: '#ff3d9a', violet: '#9b7bff', deep: '#2a1446', ink: '#f6f0ff' },
@@ -627,13 +629,18 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   const canopyCenter = new THREE.Vector3();
   let foliage;
   {
+    // на телефоне облачков меньше (они и так мелкие на экране), зато каждое чуть крупнее
+    const lite = isMobile() || !!env.coarse;
+    const grow = lite ? 1.14 : 1;
+    // размер облачков заметно разный — иначе крона похожа на попкорн
+    const vary = () => lerp(0.62, 1.35, Math.pow(rng(), 1.15));
     const blobs = [];
     for (const t of tips) {
-      const count = t.big ? 5 : 3;
+      const count = t.big ? (lite ? 3 : 5) : (lite ? 2 : 3);
       for (let c = 0; c < count; c++) {
         const off = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize().multiplyScalar(Math.cbrt(rng()) * (t.big ? 0.27 : 0.19));
         off.y = Math.abs(off.y) * 0.6 + 0.02;
-        const s = (t.big ? 0.19 : 0.15) + rng() * 0.12;
+        const s = ((t.big ? 0.19 : 0.15) + rng() * 0.1) * vary() * grow;
         blobs.push({ p: t.p.clone().add(off), s });
       }
     }
@@ -645,7 +652,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       const r = tb.getSize(new THREE.Vector3()).multiplyScalar(0.5);
       const pnt = new THREE.Vector3();
       let added = 0;
-      for (let k = 0; k < 400 && added < 70; k++) {
+      const domeN = lite ? 46 : 70;
+      for (let k = 0; k < 400 && added < domeN; k++) {
         const th = rng() * TAU;
         const ph = Math.acos(lerp(1, -0.25, rng()));
         const sh = 0.8 + rng() * 0.25;
@@ -653,16 +661,44 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
         let near = Infinity;
         for (const t of tips) near = Math.min(near, t.p.distanceToSquared(pnt));
         if (near > 0.5 * 0.5) continue;
-        blobs.push({ p: pnt.clone(), s: 0.2 + rng() * 0.13 });
+        blobs.push({ p: pnt.clone(), s: (0.19 + rng() * 0.1) * vary() * grow });
         added++;
       }
     }
     let minY = Infinity, maxY = -Infinity;
     for (const b of blobs) { minY = Math.min(minY, b.p.y); maxY = Math.max(maxY, b.p.y); canopyCenter.add(b.p); }
     canopyCenter.divideScalar(blobs.length);
+    // «плакучие» кисти: несколько гроздей свисают ниже кромки кроны с крайних веток
+    {
+      const outer = tips
+        .filter((t) => t.big)
+        .map((t) => ({ t, r: Math.hypot(t.p.x - canopyCenter.x, t.p.z - canopyCenter.z) }))
+        .sort((a, b) => b.r - a.r);
+      const picked = [];
+      for (const o of outer) {
+        if (picked.length >= 6) break;
+        // не две кисти рядом
+        if (picked.some((q) => q.p.distanceTo(o.t.p) < 0.55)) continue;
+        picked.push(o.t);
+      }
+      for (const t of picked) {
+        const out = new THREE.Vector3(t.p.x - canopyCenter.x, 0, t.p.z - canopyCenter.z).normalize();
+        const len = 0.3 + rng() * 0.3;
+        const n = 3;
+        for (let k = 0; k < n; k++) {
+          const u = (k + 1) / n;
+          blobs.push({
+            p: t.p.clone().addScaledVector(out, 0.06 + u * 0.08).add(new THREE.Vector3((rng() - 0.5) * 0.06, -len * u, (rng() - 0.5) * 0.06)),
+            s: lerp(0.16, 0.085, u) * grow,
+            droop: true,
+          });
+        }
+      }
+    }
+    // гладкие (не гранёные) шарики: у IcosahedronGeometry(1, 1) нормали уже сферические
     const geo = new THREE.IcosahedronGeometry(1, 1);
     const mat = patchMaterial(
-      new THREE.MeshStandardMaterial({ flatShading: true, roughness: 0.6, metalness: 0 }),
+      new THREE.MeshStandardMaterial({ flatShading: false, roughness: 0.55, metalness: 0 }),
       'sk-foliage',
       {
         uniforms: {
@@ -689,8 +725,9 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
             diffuseColor.rgb = mix(diffuseColor.rgb, rb * (0.3 + 0.9 * sk_luma(diffuseColor.rgb)), uParty * 0.85);
             totalEmissiveRadiance += diffuseColor.rgb * (0.16 + 0.25 * uParty);
             vec3 V = normalize(vViewPosition);
-            float fres = pow(1.0 - clamp(abs(dot(normal, V)), 0.0, 1.0), 2.2);
-            totalEmissiveRadiance += mix(uRimCol, diffuseColor.rgb * 1.6, 0.55) * fres * 0.42;
+            float fres = pow(1.0 - clamp(abs(dot(normal, V)), 0.0, 1.0), 2.4);
+            // мягкая розовая кайма по краю — будто крону подсвечивают сзади
+            totalEmissiveRadiance += mix(uRimCol, diffuseColor.rgb * 1.6, 0.45) * fres * 0.6;
           }`,
       }
     );
@@ -714,8 +751,9 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       q.setFromEuler(e);
       m.compose(b.p, q, new THREE.Vector3(b.s, b.s * 0.82, b.s));
       foliage.setMatrixAt(i, m);
-      const h = (b.p.y - minY) / Math.max(0.001, maxY - minY);
+      const h = Math.max(0, (b.p.y - minY) / Math.max(0.001, maxY - minY));
       col.set(pick());
+      if (b.droop) col.lerp(light, 0.25);
       if (h > 0.65) col.lerp(light, (h - 0.65) * 0.5);
       if (h < 0.35) col.lerp(dark, (0.35 - h) * 1.1);
       foliage.setColorAt(i, col);
@@ -812,7 +850,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
         float soft = exp(-pow((r - 0.8) / 0.09, 2.0)) * 0.12;
         float fill = smoothstep(0.82, 0.0, r) * 0.05;
         float outer = exp(-pow((r - 0.93) / 0.004, 2.0)) * 0.3 * (0.35 + 0.65 * sin(a * 2.0 - uTime * 0.35));
-        float ticks = step(0.6, fract(a / 6.2831853 * 120.0 + uTime * 0.02)) * exp(-pow((r - 0.87) / 0.006, 2.0)) * 0.22;
+        float ticks = step(0.6, fract(a / 6.2831853 * 120.0 + uTime * 0.02)) * exp(-pow((r - 0.87) / 0.006, 2.0)) * 0.1;
         float fadeLow = 0.55 + 0.45 * smoothstep(-0.9, 0.4, p.y);
         ring *= fadeLow; soft *= fadeLow; outer *= fadeLow; ticks *= fadeLow;
         vec3 col = mix(uColA, uColB, 0.5 + 0.5 * sin(a + uTime * 0.25));
@@ -842,7 +880,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
         float a = atan(p.y, p.x);
         float r1 = exp(-pow((r - 0.92) / 0.01, 2.0));
         float r2 = exp(-pow((r - 0.8) / 0.006, 2.0)) * 0.6;
-        float dash = step(0.5, fract(a / 6.2831853 * 48.0 - uTime * 0.05)) * exp(-pow((r - 0.86) / 0.012, 2.0)) * 0.7;
+        float dash = step(0.5, fract(a / 6.2831853 * 48.0 - uTime * 0.05)) * exp(-pow((r - 0.86) / 0.012, 2.0)) * 0.35;
         float glow = exp(-pow((r - 0.86) / 0.12, 2.0)) * 0.12;
         vec3 col = mix(uCol, uCol2, 0.5 + 0.5 * sin(a * 2.0 + uTime * 0.4));
         col = mix(col, sk_rainbow(fract(a / 6.2831853 - uTime * 0.25)), uParty * 0.9);
@@ -915,12 +953,12 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
 
   // ------------------------------------------------------------ orbiting 3D logos
   const ORBITS = [
-    { r: 2.62, tx: 0.34, tz: 0.24, y: 0.85 },
-    { r: 2.78, tx: 0.2, tz: -0.3, y: 1.0 },
-    { r: 2.5, tx: 0.44, tz: -0.06, y: 0.7 },
-    { r: 2.88, tx: 0.12, tz: 0.36, y: 1.1 },
-    { r: 2.7, tx: 0.3, tz: -0.18, y: 0.6 },
-    { r: 2.56, tx: 0.24, tz: 0.12, y: 1.2 },
+    { r: 2.92, tx: 0.34, tz: 0.24, y: 1.1 },
+    { r: 3.08, tx: 0.2, tz: -0.3, y: 1.25 },
+    { r: 2.8, tx: 0.4, tz: -0.06, y: 0.95 },
+    { r: 3.18, tx: 0.12, tz: 0.34, y: 1.35 },
+    { r: 3.0, tx: 0.3, tz: -0.18, y: 0.85 },
+    { r: 2.86, tx: 0.24, tz: 0.12, y: 1.45 },
   ];
   const MAX_LOGOS = ORBITS.length;
   const orbitPoint = (o, ang, out) => {
@@ -931,15 +969,22 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   };
   ORBITS.forEach((o) => { o.euler = new THREE.Euler(o.tx, 0, o.tz); });
   const LOGO_SIZE = 0.8;
+  // 3D-цвета брендов: cap — лицевая сторона, accent — кайма/свечение/хвост орбиты.
+  // Steam — тёмно-синий диск с голубой каймой (иначе он, как и GitHub, читается белым кругом)
+  const BRAND3D = {
+    steam: { cap: '#1b2838', accent: '#66c0f4', side: '#2a475e' },
+  };
   const shown = links.slice(0, MAX_LOGOS);
   const logos = shown.map((link, i) => {
     const o = ORBITS[i % ORBITS.length];
     const group = new THREE.Group();
     const spinner = new THREE.Group();
     group.add(spinner);
-    const col = new THREE.Color(link.color || theme.pink);
+    const b3 = BRAND3D[link.id] || {};
+    const col = new THREE.Color(b3.cap || link.color || theme.pink);
+    const accent = new THREE.Color(b3.accent || link.color || theme.pink);
     const uHover = { value: 0 };
-    const rimCol = col.clone().lerp(new THREE.Color('#ffffff'), 0.5);
+    const rimCol = b3.accent ? accent.clone() : accent.clone().lerp(new THREE.Color('#ffffff'), 0.5);
     const capMat = patchMaterial(
       new THREE.MeshPhysicalMaterial({
         color: col, metalness: 0.15, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.08,
@@ -957,8 +1002,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       }
     );
     const sideMat = new THREE.MeshStandardMaterial({
-      color: col.clone().lerp(new THREE.Color('#ffffff'), 0.6), metalness: 1, roughness: 0.16,
-      emissive: col, emissiveIntensity: 0.18, envMap: envTex, envMapIntensity: 1.8,
+      color: new THREE.Color(b3.side || col).lerp(new THREE.Color('#ffffff'), 0.25), metalness: 1, roughness: 0.16,
+      emissive: b3.accent ? accent : col, emissiveIntensity: 0.18, envMap: envTex, envMapIntensity: 1.8,
     });
     let geo;
     try {
@@ -969,14 +1014,14 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     }
     const mesh = new THREE.Mesh(geo, [capMat, sideMat]);
     spinner.add(mesh);
-    const glow = makeGlow(col, 1.9, 0.32);
+    const glow = makeGlow(accent, 1.9, 0.32);
     group.add(glow);
     const hit = new THREE.Mesh(new THREE.SphereGeometry(0.58, 12, 8), new THREE.MeshBasicMaterial({ visible: false }));
     hit.userData = { kind: 'logo', index: i };
     group.add(hit);
     orbitGroup.add(group);
     return {
-      link, i, o, group, spinner, glow, hit, col, uHover, capMat,
+      link, i, o, group, spinner, glow, hit, col, accent, uHover, capMat,
       phase: (i / Math.max(1, shown.length)) * TAU + 0.4,
       delay: 0.55 + i * 0.16, dur: 1.25,
       hoverK: 0, pulse: 0, spinT: 1,
@@ -990,7 +1035,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     uniforms: {
       uHead: { value: new Array(MAX_LOGOS).fill(0) },
       uVis: { value: new Array(MAX_LOGOS).fill(0) },
-      uCol: { value: ORBITS.map((_, i) => new THREE.Color(logos[i]?.link.color || theme.pink).lerp(new THREE.Color('#ffffff'), 0.25)) },
+      uCol: { value: ORBITS.map((_, i) => (logos[i]?.accent || new THREE.Color(theme.pink)).clone().lerp(new THREE.Color('#ffffff'), 0.25)) },
       uPx: { value: 600 }, uParty: U.uParty, uTime: U.uTime,
     },
     vertexShader: /* glsl */ `
@@ -1002,7 +1047,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
         float head = uHead[oi];
         float d = fract((head - aAng) / 6.2831853);
         float trail = pow(1.0 - d, 9.0);
-        vA = (0.1 + 0.9 * trail) * uVis[oi];
+        vA = 0.9 * trail * uVis[oi];
         vCol = uCol[oi];
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         float sc = length(modelMatrix[0].xyz);
@@ -1068,12 +1113,16 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     }
     maxY = Math.max(maxY, halo.position.y + HALO_R * 0.82);
     const halfW = Math.max(Math.abs(minX), Math.abs(maxX));
-    return { w: halfW * 2, h: maxY - minY, cy: (maxY + minY) / 2 };
+    // «ядро» — сам остров с деревом (без орбит и гало): по нему кот понимает, где 3D-герой
+    const core = { halfW: maxR, top: box.max.y, bottom: box.min.y };
+    return { w: halfW * 2, h: maxY - minY, cy: (maxY + minY) / 2, core };
   })();
 
   // ------------------------------------------------------------ petals
-  const PETAL_MAX = reduced ? 120 : 350;
-  const petalCount = () => (reduced ? 110 : isMobile() ? 140 : 350);
+  // лепестков немного: это атмосфера, а не метель (и ближние к камере — мягкие и полупрозрачные)
+  const PETAL_MAX = reduced ? 90 : 170;
+  let petalMul = 1; // понижается «губернатором» кадров на слабых устройствах
+  const petalCount = () => Math.round((reduced ? 70 : isMobile() ? 80 : 170) * petalMul);
   const BURST_N = 110;
   const petalGeo = makePetalGeometry();
   {
@@ -1082,9 +1131,14 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     petalGeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 1));
   }
   const petalMat = new THREE.ShaderMaterial({
-    uniforms: { uTime: U.uTime, uParty: U.uParty, uFar: { value: new THREE.Color('#8f7ad8') } },
+    uniforms: {
+      uTime: U.uTime, uParty: U.uParty, uFar: { value: new THREE.Color('#8f7ad8') },
+      // экранная «чистая зона» вокруг острова: центр (NDC), радиус (в долях высоты NDC), соотношение сторон
+      uHero: { value: new THREE.Vector4(0.36, 0, 0.5, 1.6) },
+    },
     vertexShader: /* glsl */ `
       attribute vec3 aCol; attribute float aSeed;
+      uniform vec4 uHero;
       varying vec3 vCol; varying float vSeed; varying float vShade; varying float vAlpha; varying float vFar;
       void main(){
         #ifdef USE_INSTANCING
@@ -1100,10 +1154,15 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
         vShade = 0.6 + 0.35 * lit + 0.6 * pow(facing, 14.0);
         vec4 mv = viewMatrix * wp;
         float d = -mv.z;
-        vAlpha = smoothstep(0.5, 2.0, d) * (1.0 - 0.35 * smoothstep(16.0, 24.0, d));
+        // близкие к камере — мягкие и полупрозрачные, дальние — чуть тусклее
+        vAlpha = (smoothstep(2.5, 7.0, d) * 0.55 + 0.45 * smoothstep(5.0, 8.0, d)) * (1.0 - 0.35 * smoothstep(16.0, 24.0, d));
         vFar = smoothstep(9.0, 24.0, d);
         vCol = aCol; vSeed = aSeed;
         gl_Position = projectionMatrix * mv;
+        // перед островом лепестки вдвое прозрачнее — герой остаётся чистым
+        vec2 ndc = gl_Position.xy / max(gl_Position.w, 1e-3);
+        float hr = length((ndc - uHero.xy) * vec2(uHero.w, 1.0)) / max(uHero.z, 1e-3);
+        vAlpha *= mix(0.5, 1.0, smoothstep(0.7, 1.05, hr));
       }`,
     fragmentShader: /* glsl */ `
       uniform float uTime; uniform float uParty; uniform vec3 uFar;
@@ -1209,7 +1268,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     return B;
   }
   const petalState = [];
-  const randZ = () => (Math.random() < 0.12 ? lerp(6.5, 11.2, Math.random()) : lerp(-9, 6.5, Math.random()));
+  const randZ = () => (Math.random() < 0.04 ? lerp(6.5, 9.0, Math.random()) : lerp(-9, 6.5, Math.random()));
   function spawnPetal(p, initial) {
     p.z = randZ();
     const b = boundsAtZ(p.z);
@@ -1230,7 +1289,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   let burstNext = 0;
 
   // ------------------------------------------------------------ layout
-  const lay = { s: 1, cx: 0.68, cy: 0.5, ts: 1, tcx: 0.68, tcy: 0.5, w: 1, h: 1, ready: false };
+  const lay = { s: 1, cx: 0.68, cy: 0.5, ts: 1, tcx: 0.68, tcy: 0.5, w: 1, h: 1, ppw: 1, k: 1, ready: false };
   function computeLayout() {
     const w = Math.max(1, canvas.clientWidth || innerWidth);
     const h = Math.max(1, canvas.clientHeight || innerHeight);
@@ -1239,14 +1298,35 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     const ppw = h / (2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))); // px на единицу мира у центра
     let k;
     if (!mobile) {
-      k = Math.min((0.52 * h) / HERO.h, (0.44 * w) / HERO.w);
-      lay.tcx = 0.68; lay.tcy = 0.5;
+      // на больших мониторах остров крупнее (иначе теряется в кольце видео)
+      const t = clamp01((w - 1440) / 480);
+      k = Math.min((lerp(0.52, 0.62, t) * h) / HERO.h, (lerp(0.44, 0.48, t) * w) / HERO.w);
+      lay.tcx = lerp(0.68, 0.66, t); lay.tcy = 0.5;
+    } else if (w > h && h <= 560) {
+      // телефон боком: остров справа, карточка слева (см. css: orientation: landscape)
+      k = Math.min((0.88 * h) / HERO.h, (0.42 * w) / HERO.w);
+      lay.tcx = 0.75; lay.tcy = 0.5;
     } else {
-      k = Math.min((0.9 * w) / HERO.w, (0.35 * h) / HERO.h);
-      lay.tcx = 0.5; lay.tcy = 0.24;
+      // телефон: остров сверху и поменьше, между ним и карточкой (44svh) остаётся воздух для кота
+      k = Math.min((0.8 * w) / HERO.w, (0.28 * h) / HERO.h);
+      lay.tcx = 0.5; lay.tcy = 0.22;
     }
     lay.ts = k / ppw;
-    lay.w = w; lay.h = h;
+    lay.w = w; lay.h = h; lay.ppw = ppw; lay.k = k;
+  }
+  // экранный прямоугольник «ядра» героя (остров + дерево), CSS px — для кота (куда ставить пузырь)
+  function heroRect() {
+    const k = lay.k;
+    const cx = lay.tcx * lay.w, cy = lay.tcy * lay.h;
+    const c = HERO.core;
+    return {
+      x: cx - c.halfW * k, w: c.halfW * 2 * k,
+      y: cy - (c.top - HERO.cy) * k, h: (c.top - c.bottom) * k,
+      mobile: lay.w < 900,
+    };
+  }
+  function announceHero() {
+    try { window.dispatchEvent(new CustomEvent('sempik:hero', { detail: heroRect() })); } catch (_) { /* старый браузер */ }
   }
   function applyLayout(dt, snap) {
     if (snap || !lay.ready) {
@@ -1261,10 +1341,11 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   }
 
   let pxScale = 600;
+  let pixelCap = Infinity; // потолок DPR от «губернатора» кадров
   function resize() {
     const w = Math.max(1, canvas.clientWidth || innerWidth);
     const h = Math.max(1, canvas.clientHeight || innerHeight);
-    const dpr = Math.min(window.devicePixelRatio || 1, w < 900 ? 1.5 : 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, w < 900 ? 1.5 : 2, pixelCap);
     renderer.setPixelRatio(dpr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
@@ -1276,6 +1357,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     sparkMat.uniforms.uPx.value = pxScale;
     const want = Math.min(PETAL_MAX, petalCount());
     if (want !== petals.count) petals.count = want;
+    announceHero();
   }
   resize();
   applyLayout(0, true);
@@ -1407,7 +1489,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       L.pulse = 1;
       if (e.pointerType !== 'mouse') { hovered = L.i; L.spinT = 0; setTimeout(() => { if (hovered === L.i) hovered = -1; }, 900); }
       L.group.getWorldPosition(tmpV);
-      emitSparks(tmpV, L.link.color || theme.pink, 46, 1.9);
+      emitSparks(tmpV, L.accent || theme.pink, 46, 1.9);
+      sfx('pop');
       try { onLinkActivate?.(L.link); } catch (err) { console.error('[sempik] onLinkActivate', err); }
     } else {
       shakeTree();
@@ -1471,6 +1554,10 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
 
     partyK = damp(partyK, party ? 1 : 0, 2.5, dt);
     U.uParty.value = partyK;
+    {
+      const hu = petalMat.uniforms.uHero.value;
+      hu.set(lay.cx * 2 - 1, 1 - lay.cy * 2, (0.42 * HERO.h * lay.s * lay.ppw) / Math.max(1, lay.h) * 2, lay.w / Math.max(1, lay.h));
+    }
 
     // reveal
     if (revealed) revealT += dt;
@@ -1502,7 +1589,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     // halo + magic circle
     const glowIn = clamp01((revealT - 0.15) / 1.2);
     haloMat.uniforms.uOpacity.value = easeOutCubic(glowIn) * (0.85 + 0.15 * Math.sin(time * 0.8));
-    circleMat.uniforms.uOpacity.value = easeOutCubic(clamp01((revealT - 0.4) / 1.4)) * 0.4;
+    circleMat.uniforms.uOpacity.value = easeOutCubic(clamp01((revealT - 0.4) / 1.4)) * 0.25;
     flyMat.uniforms.uVis.value = easeOutCubic(clamp01((revealT - 0.6) / 1.5));
     magic.rotation.z = -time * (reduced ? 0 : 0.06 + partyK * 0.5);
     halo.lookAt(camera.position); // гало всегда лицом к камере
@@ -1627,13 +1714,57 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   let running = false;
   let errors = 0;
   let firstFrame = true;
+
+  // Прогрев шейдеров: compileAsync компилирует программы в фоне (KHR_parallel_shader_compile),
+  // а не одним длинным блокирующим кадром. Герой на время компиляции «видим», чтобы учлись его
+  // точечные источники света (иначе на reveal() всё перекомпилируется). Страховка — 5 с.
+  let warm = false;
+  const warmDone = () => { warm = true; };
+  try {
+    heroRoot.visible = true;
+    for (const L of logos) L.group.visible = true;
+    sparks.visible = true;
+    burst.visible = true;
+    const p = renderer.compileAsync ? renderer.compileAsync(scene, camera) : null;
+    if (p && p.then) p.then(warmDone, warmDone); else warmDone();
+  } catch (_) { warmDone(); }
+  setTimeout(warmDone, 5000);
+
+  // «Губернатор» кадров: если долго не тянем ~45 fps — снижаем разрешение (2 → 1.5 → 1) и число лепестков
+  const gov = { ema: 16, slowT: 0, wait: 4, level: 0 };
+  function govern(rawMs, dt) {
+    if (!revealed || reduced) return;
+    if (rawMs > 250) return; // вкладка подвисла/спала — не считается
+    gov.ema = gov.ema * 0.92 + rawMs * 0.08;
+    if (gov.wait > 0) { gov.wait -= dt; return; }
+    gov.slowT = gov.ema > 22 ? gov.slowT + dt : 0;
+    if (gov.slowT < 2.5) return;
+    gov.slowT = 0;
+    gov.wait = 3;
+    const cur = renderer.getPixelRatio();
+    if (cur > 1.01) {
+      pixelCap = Math.max(1, cur - 0.5);
+      resize();
+    } else if (petalMul > 0.45) {
+      petalMul *= 0.6;
+      resize();
+    } else {
+      gov.wait = Infinity; // дальше не трогаем
+    }
+    gov.level++;
+  }
+
   function frame(now) {
     raf = requestAnimationFrame(frame);
-    const dt = last ? Math.min(0.05, Math.max(0, (now - last) / 1000)) : 1 / 60;
+    const rawMs = last ? now - last : 16;
+    const dt = last ? Math.min(0.05, Math.max(0, rawMs / 1000)) : 1 / 60;
     last = now;
+    // пока шейдеры компилируются в фоне, а заставка закрывает экран — не рисуем
+    if (!warm && !revealed) return;
     // пока непрозрачная заставка закрывает экран, сцену всё равно не видно — после кадра прогрева
     // не рисуем, чтобы заставка и её «дырка» на входе шли плавно (особенно на слабых видеокартах)
     if (!firstFrame && !revealed && document.getElementById('splash')) return;
+    govern(rawMs, dt);
     try {
       update(dt);
       if (firstFrame) {
@@ -1690,6 +1821,9 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
         logos: logos.map((L) => ({ id: L.link.id, ...toScreen(L.group), z: L.group.getWorldPosition(new THREE.Vector3()).z })),
         tree: toScreen(treeGroup, canopyCenter),
         hovered,
+        hero: heroRect(),
+        gov: { level: gov.level, ema: gov.ema, dpr: renderer.getPixelRatio(), petals: petals.count },
+        info: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles },
       };
     },
     // отладка из консоли: sempik.scene._step(1.5) — прокрутить симуляцию вперёд на N секунд
@@ -1726,6 +1860,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       if (revealed) return;
       revealed = true;
       revealT = 0;
+      announceHero();
       // маленький салют искр в момент появления
       setTimeout(() => {
         if (reduced) return;
