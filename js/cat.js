@@ -447,7 +447,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     return true;
   }
   // дойти до места толчка, присесть и прыгнуть на поверхность target
-  function planJump(target, lx, next) {
+  function planJump(target, lx, next, speed = 105) {
     const s = cat.surf;
     let landX, takeoff;
     if (target.floor) {
@@ -466,7 +466,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       if (!s.floor) takeoff = clamp(cat.x, surfL(s), surfR(s));
     }
     const prep = { type: "prep", dur: 0.32, tx: landX, surf: target, next: next || null };
-    if (Math.abs(takeoff - cat.x) > 8 * K) setTask("walk", { tx: takeoff, speed: 105 * K / 1.25, next: prep });
+    if (Math.abs(takeoff - cat.x) > 8 * K) setTask("walk", { tx: takeoff, speed: speed * K / 1.25, next: prep });
     else startTask(prep);
   }
 
@@ -772,6 +772,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
         if (done) think();
         break;
       }
+      case "jumpdbg": if (!planWander()) think(); break;
       case "dance": danceUpdate(t, dt); break;
       case "hunt": huntUpdate(t, dt); break;
       case "yarn": yarnPlay(t, dt); break;
@@ -810,7 +811,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       if (s !== cat.surf) {
         if (t.cool <= 0 && canJumpTo(s)) {
           t.cool = 1.2;
-          planJump(s, laser.x, null);
+          planJump(s, laser.x, null, 420);
           return;
         }
         moveTo(laser.x, 300 * K / 1.25, dt);
@@ -864,7 +865,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       return;
     }
     if (b.surf !== cat.surf) {
-      if (t.cool <= 0 && canJumpTo(b.surf)) { t.cool = 1.4; planJump(b.surf, b.x, null); return; }
+      if (t.cool <= 0 && canJumpTo(b.surf)) { t.cool = 1.4; planJump(b.surf, b.x, null, 380); return; }
       moveTo(b.x, 200 * K / 1.25, dt);
       return;
     }
@@ -1035,7 +1036,17 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       const l = wallL(), r = wallR();
       if (cat.x < l) { cat.x = l; if (cat.vx < 0) { cat.vx = -cat.vx * 0.45; cat.vrot += 3; } }
       else if (cat.x > r) { cat.x = r; if (cat.vx > 0) { cat.vx = -cat.vx * 0.45; cat.vrot -= 3; } }
-      if (cat.y < -H * 0.7 && cat.vy < 0) cat.vy *= 0.5;
+      // потолок: стукается и падает обратно (голова остаётся на экране)
+      const ceil = 64 * K;
+      if (cat.y < ceil && cat.vy < 0) {
+        cat.y = ceil;
+        if (cat.vy < -300) {
+          cat.vrot += clamp(cat.vx / 200, -6, 6) + rand(-3, 3);
+          for (let i = 0; i < (RM ? 2 : 5); i++) emit(SPARK, cat.x + rand(-20, 20) * K, Math.max(4, cat.y - 70 * K), rand(-120, 120), rand(20, 120), 0.5, rand(2, 3.5));
+          sfx("thud");
+        }
+        cat.vy = -cat.vy * 0.25;
+      }
       if (cat.tumble) {
         cat.rot = wrapAngle(cat.rot);
         const below = surfaceBelow(cat.x, cat.y).top;
@@ -1052,8 +1063,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       }
     } else if (cat.mode === "drag") {
       const k = 1 - Math.exp(-32 * dt);
-      cat.sx += (ptr.x - cat.sx) * k;
-      cat.sy += (ptr.y - cat.sy) * k;
+      cat.sx += (clamp(ptr.x, 20 * K, W - 20 * K) - cat.sx) * k;
+      cat.sy += (clamp(ptr.y, 34 * K, FLOOR - 8 * K) - cat.sy) * k;
       const hang = HANG_L * K;
       const vx = (cat.cmx - cat.cmpx) * 0.99, vy = (cat.cmy - cat.cmpy) * 0.99;
       cat.cmpx = cat.cmx; cat.cmpy = cat.cmy;
@@ -1064,7 +1075,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       cat.cmy = cat.sy + (dy / d) * hang;
       const fs = cat.face < 0 ? -1 : 1;
       const rest = Math.atan2(COM_Y - SCRUFF_Y, (COM_X - SCRUFF_X) * fs);
-      const nr = wrapAngle(Math.atan2(cat.cmy - cat.sy, cat.cmx - cat.sx) - rest);
+      // + небольшой доп. наклон: за шкирку кот висит почти вертикально
+      const nr = wrapAngle(Math.atan2(cat.cmy - cat.sy, cat.cmx - cat.sx) - rest - 0.42 * fs);
       cat.vrot = wrapAngle(nr - cat.rot) / dt;
       cat.rot = nr;
       computeXform();
@@ -1164,13 +1176,13 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       b.y += b.vy * dt;
       if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx) * 0.6; }
       else if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx) * 0.6; }
-      if (b.y < -H * 0.5 && b.vy < 0) b.vy *= 0.5;
+      if (b.y < b.r && b.vy < 0) { b.y = b.r; b.vy = -b.vy * 0.4; }
       if (b.ground) {
         const s = b.surf;
         if (!s.floor && (!s.stay || b.x < s.left - 14 * K || b.x > s.right + 14 * K)) b.ground = false;
         else {
           b.y = s.top - b.r; b.vy = 0;
-          b.vx *= Math.exp(-1.15 * dt);
+          b.vx *= Math.exp(-1.7 * dt);
           if (Math.abs(b.vx) < 3) b.vx = 0;
         }
       } else if (b.vy > 0) {
@@ -1259,10 +1271,10 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
     // ступни
     if (ground) {
-      const beta = lerp(0.6, 0.4, run);
-      const stride = lerp(30, 64, run);
+      const beta = lerp(0.6, 0.38, run);
+      const stride = lerp(30, 92, run);
       const A = (stride * beta) / 2 * mv;
-      const lift = lerp(5, 9, run) * mv;
+      const lift = lerp(5, 11, run) * mv;
       for (let i = 0; i < 4; i++) {
         const off = lerp(WALK_OFF[i], RUN_OFF[i], run);
         let p = (cat.phase + off) % 1;
@@ -1303,8 +1315,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
         R.pawOver = true;
       } else if (pawMode === 2) {
         const w = Math.sin(t * TAU * (RM ? 0.6 : 1.1));
-        tx = R.headX + 15 + w * 4;
-        ty = R.headY + 4 - Math.abs(w) * 5;
+        tx = R.headX + 22 + w * 3;
+        ty = R.headY - 3 - Math.abs(w) * 6;
         R.pawOver = true;
       } else if (pawMode === 3) {
         const u = pawU, hx = R.hipX[0], hy = R.hipY[0];
@@ -1838,6 +1850,12 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     ctx.scale(fl, fl);
     ctx.fillStyle = gLaser;
     ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill();
+    // ядро рисуем обычным смешиванием — иначе на белой шерсти точка пропадает
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(255,40,60,0.9)";
+    ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, TAU); ctx.fill();
     ctx.restore();
   }
 
@@ -1903,27 +1921,37 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     if (!bub.placed) { bub.x = ax; bub.y = ay; bub.placed = true; }
     bub.x = follow(bub.x, ax, 14, dt);
     bub.y = follow(bub.y, ay, 14, dt);
+    // по умолчанию — над головой; если места нет — сбоку от головы
     let bx = clamp(bub.x - w / 2, 8, W - w - 8);
     let by = bub.y - h - 8;
-    let tailDown = true;
-    if (by < 8) { by = Math.min(bub.y + 60 * K, H - h - 8); tailDown = false; }
-    const tx = clamp(bub.x, bx + 14, bx + w - 14);
+    let side = 0; // 0 — хвостик вниз, 1 — пузырь справа (хвостик влево), -1 — слева
+    if (by < 8) {
+      const hx = headWX, gap = 30 * K;
+      side = hx + gap + w + 8 < W ? 1 : -1;
+      bx = side > 0 ? hx + gap : hx - gap - w;
+      by = clamp(headWY - h / 2 - 6 * K, 8, H - h - 8);
+    }
+    const tx = side === 0 ? clamp(bub.x, bx + 14, bx + w - 14) : side > 0 ? bx : bx + w;
+    const ty = side === 0 ? by + h : clamp(headWY - 6 * K, by + 10, by + h - 10);
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.translate(tx, tailDown ? by + h + 7 : by - 7);
+    const ox = side === 0 ? tx : side > 0 ? bx - 7 : bx + w + 7;
+    const oy = side === 0 ? by + h + 7 : ty;
+    ctx.translate(ox, oy);
     ctx.scale(sc, sc);
-    ctx.translate(-tx, -(tailDown ? by + h + 7 : by - 7));
+    ctx.translate(-ox, -oy);
     ctx.beginPath();
     rrect(bx, by, w, h, 14);
     // хвостик пузыря
-    if (tailDown) {
-      ctx.moveTo(tx - 7, by + h - 0.5);
-      ctx.quadraticCurveTo(tx - 1, by + h + 3, tx + 1, by + h + 9);
-      ctx.quadraticCurveTo(tx + 3, by + h + 2, tx + 8, by + h - 0.5);
+    if (side === 0) {
+      ctx.moveTo(tx - 7, ty - 0.5);
+      ctx.quadraticCurveTo(tx - 1, ty + 3, tx + 1, ty + 9);
+      ctx.quadraticCurveTo(tx + 3, ty + 2, tx + 8, ty - 0.5);
     } else {
-      ctx.moveTo(tx - 7, by + 0.5);
-      ctx.quadraticCurveTo(tx - 1, by - 3, tx + 1, by - 9);
-      ctx.quadraticCurveTo(tx + 3, by - 2, tx + 8, by + 0.5);
+      const d = -side;
+      ctx.moveTo(tx - d * 0.5, ty - 6);
+      ctx.quadraticCurveTo(tx + d * 3, ty - 1, tx + d * 9, ty + 1);
+      ctx.quadraticCurveTo(tx + d * 2, ty + 3, tx - d * 0.5, ty + 6);
     }
     ctx.shadowColor = "rgba(255,61,154,0.5)";
     ctx.shadowBlur = 18;
@@ -1974,6 +2002,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
     resetTargets();
     cat.moved = false;
+    // разворот: «переворачиваем» кота по X (быстро, ~0.25 c)
+    if (cat.mode !== "drag") cat.face = toward(cat.face, cat.dir, dt * (RM ? 7 : 10));
     if (cat.mode === "ground") {
       const s = cat.surf;
       if (!s.floor && !s.stay) fall();
@@ -1993,7 +2023,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       const spd = Math.abs(cat.vx) / K;
       TG.move = clamp(spd / 22, 0, 1);
       TG.run = clamp((spd - 140) / 130, 0, 1);
-      const stride = lerp(30, 64, P.run);
+      const stride = lerp(30, 92, P.run);
       cat.phase = (cat.phase + (spd * dt) / stride) % 1;
     } else {
       TG.move = 0; TG.run = 0;
@@ -2368,7 +2398,7 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
     // клубок вылетает из кнопки
     const r = yarnBtn.getBoundingClientRect();
     b.on = true; b.dying = false; b.alpha = 0;
-    b.r = 13 * K / 1.25;
+    b.r = 15 * K / 1.25;
     b.x = r.left + r.width / 2; b.y = r.top - b.r;
     b.vx = rand(380, 520) * (W < 600 ? 0.75 : 1);
     b.vy = -rand(700, 900);

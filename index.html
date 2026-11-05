@@ -2,236 +2,151 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>sempik</title>
+<meta name="description" content="sempik — сайт-визитка: 3D-остров с ночной сакурой, ссылки на Discord, GitHub и Telegram и котик Кекс, которого можно гладить.">
+<meta name="theme-color" content="#07050c">
+<meta name="color-scheme" content="dark">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="sempik">
+<meta property="og:title" content="sempik">
+<meta property="og:description" content="Визитка sempik: ночная сакура в 3D, ссылки на Discord, GitHub и Telegram и интерактивный котик.">
+<meta property="og:url" content="https://sempik.github.io/">
+<meta property="og:image" content="https://sempik.github.io/avatar.jpg">
+<meta property="og:image:width" content="640">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="Аватар sempik — плюшевый мишка">
+<meta property="og:locale" content="ru_RU">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="sempik">
+<meta name="twitter:description" content="Визитка sempik: ночная сакура в 3D, ссылки и котик, которого можно гладить.">
+<meta name="twitter:image" content="https://sempik.github.io/avatar.jpg">
+
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%23ff8cc6' d='M8 5l20 13-15 13zM56 5L36 18l15 13z'/%3E%3Cellipse cx='32' cy='38' rx='25' ry='21' fill='%23ff8cc6'/%3E%3Cpath fill='%23ff3d9a' d='M13 12l8 6-6 6zM51 12l-8 6 6 6z'/%3E%3Cellipse cx='23' cy='37' rx='3.6' ry='4.4' fill='%2307050c'/%3E%3Cellipse cx='41' cy='37' rx='3.6' ry='4.4' fill='%2307050c'/%3E%3Cpath d='M29.5 44.5h5L32 47.5z' fill='%2307050c'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="avatar.jpg">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Creepster&family=Rubik:wght@400;600&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #000;
-    --block: #0d0d0dcc;
-    --line: #ffffff22;
-    --text: #f2f2f2;
-    --muted: #8a8a8a;
-    --white: #ffffff;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--text);
-    font-family: "Rubik", sans-serif;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 40px 16px;
-    overflow-x: hidden;
-  }
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600..800&family=Manrope:wght@400..700&family=JetBrains+Mono:wght@400..500&display=swap">
+<link rel="stylesheet" href="css/style.css">
 
-  /* видео всего 736x414 и на чёрном фоне — не растягиваем на весь экран,
-     а ставим почти в родном размере в угол и растворяем края в чёрном */
-  #bg {
-    position: fixed; top: 0; right: 0;
-    width: min(100vw, 900px);
-    z-index: -3;
-    mix-blend-mode: screen;
-    filter: grayscale(1) contrast(1.15);
-    -webkit-mask: radial-gradient(ellipse 85% 95% at 100% 0, #000 55%, transparent 100%);
-            mask: radial-gradient(ellipse 85% 95% at 100% 0, #000 55%, transparent 100%);
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js",
+    "three/addons/": "./vendor/three/addons/"
   }
-  .shade {
-    position: fixed; inset: 0; z-index: -2;
-    background: radial-gradient(ellipse at center, transparent 35%, #000000cc 100%);
-  }
-  #petals { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
-
-  .wrap {
-    width: 100%;
-    max-width: 520px;
-    animation: rise .8s cubic-bezier(.2,.8,.2,1) both;
-  }
-  @keyframes rise { from { opacity: 0; transform: translateY(30px); } }
-
-  .head { text-align: center; margin-bottom: 26px; }
-  .avatar {
-    width: 120px; height: 120px;
-    margin: 0 auto 14px;
-    border-radius: 50%;
-    border: 2px solid #ffffffcc;
-    box-shadow: 0 0 30px #ffffff33;
-    overflow: hidden;
-  }
-  .avatar img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    /* приближаем к морде мишки */
-    transform: scale(1.7);
-    transform-origin: 43% 47%;
-  }
-
-  h1 {
-    font-family: "Creepster", cursive;
-    font-size: 64px;
-    font-weight: 400;
-    letter-spacing: 3px;
-    color: var(--white);
-    text-shadow: 0 0 18px #ffffff66, 0 4px 0 #333;
-    line-height: 1;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 14px;
-  }
-  .block {
-    aspect-ratio: 1 / 1;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 10px;
-    background: var(--block);
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    color: var(--text);
-    text-decoration: none;
-    font: inherit;
-    cursor: pointer;
-    backdrop-filter: blur(6px);
-    transition: transform .25s, border-color .25s, box-shadow .25s, background .25s;
-  }
-  .block:hover {
-    transform: translateY(-5px);
-    border-color: #ffffffaa;
-    background: #ffffff10;
-    box-shadow: 0 10px 30px -8px #ffffff55;
-  }
-  .block svg { width: 46px; height: 46px; fill: var(--white); transition: transform .25s; }
-  .block:hover svg { transform: scale(1.12); }
-  .block .name { font-family: "Creepster", cursive; font-size: 24px; letter-spacing: 1.5px; }
-  .block .sub { color: var(--muted); font-size: 12px; }
-
-  footer { text-align: center; margin-top: 26px; color: var(--muted); font-size: 12px; opacity: .7; }
-
-  .toast {
-    position: fixed; bottom: 24px; left: 50%;
-    transform: translate(-50%, 90px);
-    background: var(--white); color: #000; font-weight: 600;
-    padding: 10px 18px; border-radius: 10px; font-size: 14px;
-    transition: transform .3s;
-  }
-  .toast.show { transform: translate(-50%, 0); }
-
-  @media (max-width: 380px) { h1 { font-size: 50px; } }
-</style>
+}
+</script>
+<script>
+  // js есть → прячем карточку до входа; страховка: если модули так и не поднялись — убираем заставку
+  document.documentElement.classList.add("js");
+  addEventListener("load", function () {
+    setTimeout(function () {
+      if (window.sempik) return;
+      var s = document.getElementById("splash");
+      if (s) s.remove();
+      document.documentElement.classList.add("entered");
+    }, 8000);
+  });
+</script>
+<script type="module" src="js/main.js"></script>
+<noscript><style>#splash, .controls { display: none !important; }</style></noscript>
 </head>
 <body>
 
-<video id="bg" src="bg.mp4" autoplay muted loop playsinline></video>
-<div class="shade"></div>
-<canvas id="petals"></canvas>
+<!-- 1. фон: мокшен-видео + затемнение + зерно -->
+<div class="bg" aria-hidden="true">
+  <video id="bg-video" autoplay muted loop playsinline preload="auto" poster="assets/motion-poster.jpg" disablepictureinpicture disableremoteplayback tabindex="-1">
+    <source src="assets/motion.mp4" type="video/mp4">
+  </video>
+  <div class="bg-shade"></div>
+  <div class="grain"></div>
+</div>
 
-<main class="wrap">
-  <header class="head">
-    <div class="avatar"><img src="avatar.jpg" alt="sempik"></div>
-    <h1>sempik</h1>
-  </header>
-  <nav class="grid" id="links"></nav>
-  <footer>© <span id="year"></span> sempik</footer>
+<!-- 2. 3D-сцена (прозрачная) -->
+<canvas id="scene3d" aria-label="3D-сцена: парящий остров с сакурой и логотипами соцсетей" role="img"></canvas>
+
+<!-- 3. карточка -->
+<main class="ui">
+  <article class="card" data-cat-platform aria-labelledby="card-name">
+    <div class="card__glare" aria-hidden="true"></div>
+
+    <header class="card__head">
+      <div class="avatar reveal" style="--i:0">
+        <span class="avatar__glow" aria-hidden="true"></span>
+        <span class="avatar__ring" aria-hidden="true"></span>
+        <span class="avatar__img"><img src="avatar.jpg" alt="Аватар sempik — плюшевый мишка" width="640" height="640" decoding="async"></span>
+        <span class="avatar__dot" aria-hidden="true"></span>
+      </div>
+      <div class="card__id">
+        <h1 class="name reveal" id="card-name" data-text="sempik" style="--i:1"><span class="name__text">sempik</span></h1>
+        <p class="status reveal" style="--i:2"><span class="status__dot" aria-hidden="true"></span><span class="status__text">где-то в интернете</span></p>
+      </div>
+    </header>
+
+    <p class="tagline reveal" style="--i:3">
+      <span class="tagline__prompt" aria-hidden="true">&gt;</span>
+      <span class="tagline__text" aria-hidden="true">делаю сайты, которые никто не просил</span><span class="tagline__caret" aria-hidden="true"></span>
+      <span class="sr-only tagline__sr">делаю сайты, которые никто не просил</span>
+    </p>
+
+    <p class="about reveal" style="--i:4">Привет, я sempik. Пишу код, собираю странные штуки для браузера и иногда играю. Пиши в любую соцсеть ниже — отвечаю, когда не сплю.</p>
+
+    <nav class="links" aria-label="Где меня найти">
+      <a class="link reveal" style="--i:5" href="https://github.com/sempik" target="_blank" rel="noopener"><span class="link__text"><span class="link__name">GitHub</span><span class="link__sub">@sempik</span></span></a>
+      <a class="link reveal" style="--i:6" href="https://steamcommunity.com/profiles/76561199049345067/" target="_blank" rel="noopener"><span class="link__text"><span class="link__name">Steam</span><span class="link__sub">профиль</span></span></a>
+      <p class="link reveal" style="--i:7"><span class="link__text"><span class="link__name">Discord</span><span class="link__sub">babazina</span></span></p>
+    </nav>
+
+    <section class="gh" hidden aria-label="Статистика GitHub">
+      <div class="gh__inner">
+        <p class="gh__head"><span class="gh__label">github</span><span class="gh__live"><span aria-hidden="true"></span>live</span></p>
+        <ul class="gh__stats"></ul>
+        <ul class="gh__repos"></ul>
+      </div>
+    </section>
+
+    <footer class="card__foot reveal" style="--i:9">
+      <span class="card__copy">© <span class="js-year">2026</span> sempik · сделано с 💗 и котом</span>
+      <span class="card__hint">погладь кота · <span class="konami" title="Konami code">↑↑↓↓←→←→BA</span></span>
+    </footer>
+  </article>
 </main>
 
-<div class="toast" id="toast">Скопировано!</div>
+<!-- 4. кот -->
+<canvas id="cat-layer" aria-hidden="true"></canvas>
 
-<script>
-  // ====== РЕДАКТИРУЙ ССЫЛКИ ТУТ ======
-  // url — ссылка; copy — текст, который копируется по клику (для Discord-ника)
-  const LINKS = [
-    { name: "Steam",   sub: "профиль",   url: "https://steamcommunity.com/profiles/76561199049345067/", icon: "steam" },
-    { name: "Discord", sub: "babazina",  copy: "babazina",                                           icon: "discord" },
-    { name: "GitHub",  sub: "sempik",    url: "https://github.com/sempik",                           icon: "github" },
-  ];
-  // ===================================
+<!-- 5. хром поверх всего -->
+<div class="controls" hidden>
+  <button class="ctl ctl--sound" type="button" aria-pressed="true" aria-label="Выключить звук">
+    <svg class="ico ico--on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.2L12 5.6v12.8l-4.8-3.9H4z" /><path class="wave" d="M15.5 9.2a4 4 0 0 1 0 5.6" /><path class="wave" d="M18.2 6.6a7.6 7.6 0 0 1 0 10.8" /></svg>
+    <svg class="ico ico--off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.2L12 5.6v12.8l-4.8-3.9H4z" /><path class="wave" d="M16 9.5l5 5M21 9.5l-5 5" /></svg>
+  </button>
+  <button class="ctl ctl--music" type="button" aria-pressed="false" aria-label="Включить музыку">
+    <svg class="ico ico--note" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V6.2l10-2.2v11.3" /><circle cx="6.6" cy="17.6" r="2.4" /><circle cx="16.6" cy="15.4" r="2.4" /></svg>
+    <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+  </button>
+</div>
 
-  const ICONS = {
-    steam: '<path d="M11.98 0C5.67 0 .5 4.86 0 11.05l6.44 2.66a3.4 3.4 0 0 1 2.14-.6l2.87-4.15v-.06a4.53 4.53 0 1 1 4.53 4.53h-.1l-4.08 2.92v.16a3.4 3.4 0 0 1-6.75.6L.4 15.1A12 12 0 1 0 11.98 0zM7.54 18.2l-1.47-.6a2.55 2.55 0 1 0 1.4-3.47l1.52.63a1.88 1.88 0 1 1-1.45 3.46zm11.42-9.3a3.02 3.02 0 1 0-6.04 0 3.02 3.02 0 0 0 6.04 0zm-5.28 0a2.27 2.27 0 1 1 4.54 0 2.27 2.27 0 0 1-4.54 0z"/>',
-    discord: '<path d="M20.32 4.37A19.8 19.8 0 0 0 15.4 2.8a13.7 13.7 0 0 0-.63 1.29 18.3 18.3 0 0 0-5.5 0 12.6 12.6 0 0 0-.64-1.29 19.7 19.7 0 0 0-4.92 1.53C.6 9.05-.24 13.6.18 18.1a19.9 19.9 0 0 0 6.03 3.05c.49-.66.92-1.36 1.3-2.1a12.9 12.9 0 0 1-2.04-.98l.5-.39a14.2 14.2 0 0 0 12.16 0l.5.39c-.65.39-1.33.71-2.05.98.38.74.81 1.44 1.3 2.1a19.8 19.8 0 0 0 6.04-3.05c.5-5.2-.84-9.72-3.6-13.73zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.16-1.08-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z"/>',
-    github: '<path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/>',
-  };
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-  const box = document.getElementById("links");
-  const toast = document.getElementById("toast");
+<div id="splash" role="button" tabindex="0" aria-label="Войти на сайт sempik">
+  <div class="splash__fx" aria-hidden="true">
+    <span class="splash__glow splash__glow--a"></span>
+    <span class="splash__glow splash__glow--b"></span>
+    <span class="splash__lines"></span>
+    <span class="splash__sweep"></span>
+    <span class="splash__petals"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+  </div>
+  <div class="splash__inner">
+    <p class="splash__kicker" aria-hidden="true"><span>sempik.github.io</span><span class="splash__sep"></span><span>визитка</span></p>
+    <p class="splash__title" data-text="sempik" aria-hidden="true"><span>sempik</span></p>
+    <p class="splash__hint"><span class="splash__hint-text">загрузка…</span></p>
+  </div>
+  <p class="splash__foot" aria-hidden="true">🎧 со звуком — лучше</p>
+</div>
 
-  LINKS.forEach(l => {
-    const el = document.createElement(l.url ? "a" : "button");
-    el.className = "block";
-    el.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[l.icon] || ""}</svg>
-      <span class="name">${l.name}</span><span class="sub">${l.sub || ""}</span>`;
-    if (l.url) { el.href = l.url; el.target = "_blank"; el.rel = "noopener"; }
-    else {
-      el.onclick = () => {
-        navigator.clipboard.writeText(l.copy).catch(() => {});
-        toast.textContent = `Скопировано: ${l.copy}`;
-        toast.classList.add("show");
-        setTimeout(() => toast.classList.remove("show"), 1800);
-      };
-    }
-    box.appendChild(el);
-  });
-
-  // чёткие лепестки поверх видео (рисуются с учётом плотности пикселей экрана)
-  const cv = document.getElementById("petals"), ctx = cv.getContext("2d");
-  let W, H;
-  function resize() {
-    const dpr = window.devicePixelRatio || 1;
-    W = innerWidth; H = innerHeight;
-    cv.width = W * dpr; cv.height = H * dpr;
-    cv.style.width = W + "px"; cv.style.height = H + "px";
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  resize(); addEventListener("resize", resize);
-
-  const newPetal = (top) => ({
-    x: Math.random() * W * 1.2,
-    y: top ? -20 : Math.random() * H,
-    s: 6 + Math.random() * 9,
-    vy: .5 + Math.random() * 1.1,
-    vx: -.3 - Math.random() * .7,
-    rot: Math.random() * 6.28, vr: (Math.random() - .5) * .04,
-    flip: Math.random() * 6.28, vf: .02 + Math.random() * .04,
-    hue: Math.random() < .5 ? "#d8d8d8" : "#9a9a9a",
-  });
-  const petals = Array.from({ length: 40 }, () => newPetal(false));
-
-  function drawPetal(p) {
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(p.rot);
-    ctx.scale(1, Math.abs(Math.cos(p.flip)) * .8 + .2);
-    const g = ctx.createLinearGradient(0, -p.s, 0, p.s);
-    g.addColorStop(0, "#ffffff"); g.addColorStop(1, p.hue);
-    ctx.fillStyle = g;
-    ctx.globalAlpha = .85;
-    ctx.beginPath();
-    ctx.moveTo(0, p.s);
-    ctx.bezierCurveTo(p.s, p.s * .3, p.s * .7, -p.s, p.s * .15, -p.s * .8);
-    ctx.lineTo(0, -p.s * .55);
-    ctx.lineTo(-p.s * .15, -p.s * .8);
-    ctx.bezierCurveTo(-p.s * .7, -p.s, -p.s, p.s * .3, 0, p.s);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  (function tick() {
-    ctx.clearRect(0, 0, W, H);
-    petals.forEach((p, i) => {
-      p.y += p.vy; p.x += p.vx + Math.sin(p.flip) * .4;
-      p.rot += p.vr; p.flip += p.vf;
-      if (p.y > H + 20 || p.x < -20) petals[i] = newPetal(true);
-      drawPetal(p);
-    });
-    if (!still) requestAnimationFrame(tick);
-  })();
-
-  document.getElementById("year").textContent = new Date().getFullYear();
-</script>
 </body>
 </html>
