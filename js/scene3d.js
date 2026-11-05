@@ -1725,7 +1725,9 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     for (const L of logos) L.group.visible = true;
     sparks.visible = true;
     burst.visible = true;
-    const p = renderer.compileAsync ? renderer.compileAsync(scene, camera) : null;
+    // без расширения compileAsync всё равно компилирует синхронно (и пишет предупреждение) — тогда как раньше
+    const par = !!renderer.extensions?.has?.('KHR_parallel_shader_compile');
+    const p = par && renderer.compileAsync ? renderer.compileAsync(scene, camera) : null;
     if (p && p.then) p.then(warmDone, warmDone); else warmDone();
   } catch (_) { warmDone(); }
   setTimeout(warmDone, 5000);
