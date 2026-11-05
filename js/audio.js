@@ -23,7 +23,7 @@ const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 // ---------------------------------------------------------------- уровни микса
 const LEVEL = {
   meow: 0.3,
-  purr: 0.7,
+  purr: 0.6,
   pop: 0.26,
   tick: 0.032,
   chime: 0.085,
@@ -313,14 +313,16 @@ const MEOWS = {
     pitch: [[0, 300], [0.25, 470], [0.62, 430], [1, 320]],
     mouth: [[0, 0.3], [0.22, 1], [0.7, 0.9], [1, 0.3]],
     round: [[0, 0.2], [0.3, 0], [0.75, 0.15], [1, 0.6]],
-    amp: [[0, 0], [0.05, 0.85], [0.3, 1], [0.8, 0.85], [1, 0]],
+    amp: [[0, 0], [0.08, 0.85], [0.3, 1], [0.8, 0.85], [1, 0]],
     am: { rate: 34, type: "sine", depth: [[0, 0.6], [1, 0.6]] },
     drive: 4, noise: 0.2, bright: 0.96, vib: 8, level: 1.1,
   },
 };
 
+const hasKind = (k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(MEOWS, k);
+
 function meowVoice(rig, when, kind) {
-  const P = MEOWS[kind] || MEOWS.short;
+  const P = hasKind(kind) ? MEOWS[kind] : MEOWS.short;
   const ctx = rig.ctx;
   const nodes = [];
   const K = makeKit(ctx, nodes);
@@ -331,7 +333,8 @@ function meowVoice(rig, when, kind) {
   const pitch = curve(jitter(P.pitch, 0.025), N, (y) => y * pk);
   const mouth = curve(jitter(P.mouth, 0.03), N);
   const round = curve(P.round, N);
-  const amp = curve(P.amp, N, (y) => y * P.level * LEVEL.meow * rand(0.9, 1.05));
+  const vel = P.level * LEVEL.meow * rand(0.9, 1.05);
+  const amp = curve(P.amp, N, (y) => y * vel);
   const end = when + dur;
 
   // источник
@@ -339,7 +342,8 @@ function meowVoice(rig, when, kind) {
   osc.frequency.setValueCurveAtTime(pitch, when, dur);
   const vib = K.osc("sine", rand(5.2, 6.8)); // вибрато, нарастает к концу
   const vibG = K.gain();
-  vibG.gain.setValueCurveAtTime(curve([[0, 0], [0.3, 0.25], [1, 1]], 32, (y) => y * P.vib * rand(0.75, 1.3)), when, dur);
+  const vibDepth = P.vib * rand(0.75, 1.3); // в центах
+  vibG.gain.setValueCurveAtTime(curve([[0, 0], [0.3, 0.25], [1, 1]], 32, (y) => y * vibDepth), when, dur);
   vib.connect(vibG).connect(osc.detune);
   const jit = K.osc("triangle", rand(11, 15)); // микро-нестабильность голоса
   const jitG = K.gain(7);
@@ -737,11 +741,22 @@ function createMusic(rig, stems) {
   const K = makeKit(ctx, keep);
   const live = new Set(); // запланированные голоса { srcs, end }
 
+  // общий фейдер музыки + отдельный фейдер для доп. реверба кото (чтобы при выключении гасло всё)
   const fader = K.gain(0);
+  const wetFader = K.gain(0);
+  const faders = [fader, wetFader];
+  wetFader.connect(rig.verbIn);
+  // «плёночная» плавающая высота всей музыки: модулированная задержка на общей шине
+  // (одна линия задержки дешевле, чем LFO на detune каждого осциллятора). ±2 мс @ 0.23 Гц ≈ ±5 центов
+  const wowDelay = K.add(ctx.createDelay(0.05));
+  wowDelay.delayTime.value = 0.012;
+  const wow = K.osc("sine", 0.23);
+  const wowG = K.gain(0.002);
+  wow.connect(wowG).connect(wowDelay.delayTime);
   const tone = K.filter("lowpass", 5200, 0.5); // лоу-фай: срезаем верх
   const dry = K.gain(0.85);
   const send = K.gain(0.55);
-  fader.connect(tone);
+  fader.connect(wowDelay).connect(tone);
   tone.connect(dry).connect(rig.mix);
   tone.connect(send).connect(rig.verbIn);
   const bus = fader;
@@ -755,16 +770,7 @@ function createMusic(rig, stems) {
   const pluckLP = K.filter("lowpass", 3400, 0.6);
   const pluckSend = K.gain(0.3);
   pluckBus.connect(pluckLP).connect(bus);
-  pluckLP.connect(pluckSend).connect(rig.verbIn); // кото чуть «дальше» в пространстве
-
-  // «плёночная» плавающая высота для всех тональных голосов (в центах)
-  const wow = K.osc("sine", 0.23);
-  const wowG = K.gain(5);
-  wow.connect(wowG);
-  // медленное «дыхание» фильтров пэдов
-  const sweep = K.osc("sine", 0.031);
-  const sweepG = K.gain(300);
-  sweep.connect(sweepG);
+  pluckLP.connect(pluckSend).connect(wetFader); // кото чуть «дальше» в пространстве
 
   // ветер: фильтрованный шум с медленно плывущей полосой и громкостью
   const wind = K.noise(rig);
@@ -788,7 +794,7 @@ function createMusic(rig, stems) {
   const crkG = K.gain(0.15 * st.vinyl);
   crk.connect(crkHP).connect(crkG).connect(bus);
 
-  const persistent = [wow, sweep, wind, wl1, wl2, crk];
+  const persistent = [wow, wind, wl1, wl2, crk];
 
   let started = false, stopped = false;
   let nextChord = 0, chordN = 0, prog = PROGS[0], D = 10;
@@ -812,12 +818,13 @@ function createMusic(rig, stems) {
   function padChord(t, ch, dur) {
     const nodes = [];
     const V = makeKit(ctx, nodes);
-    const end = t + dur + 8;
+    const end = t + dur + 6.5; // релиз τ=1.5 c → к этому моменту −35 дБ
     const f = V.filter("lowpass", undefined, 0.8);
+    // фильтр медленно «раскрывается» и снова прикрывается за время аккорда
     f.frequency.setValueAtTime(240, t);
     f.frequency.setTargetAtTime(rand(1300, 2000), t, 1.6);
-    f.frequency.setTargetAtTime(rand(650, 900), t + dur * 0.6, 2.5);
-    sweepG.connect(f.frequency);
+    f.frequency.setTargetAtTime(rand(900, 1300), t + dur * 0.35, 2);
+    f.frequency.setTargetAtTime(rand(600, 850), t + dur * 0.7, 2.5);
     const g = V.gain(0);
     g.gain.setValueAtTime(0, t);
     g.gain.setTargetAtTime(1, t, 1.1);
@@ -829,7 +836,6 @@ function createMusic(rig, stems) {
       for (const [type, det, a] of [["sawtooth", rand(-10, -4), 0.03], ["triangle", rand(4, 10), 0.05]]) {
         const o = V.osc(type, mtof(m));
         o.detune.value = det;
-        wowG.connect(o.detune);
         const og = V.gain(a * lvl);
         o.connect(og).connect(f);
         srcs.push(o);
@@ -837,7 +843,6 @@ function createMusic(rig, stems) {
       if (i >= ch.notes.length - 2) {
         // «стеклянный» слой: верхние ноты октавой выше
         const o = V.osc("sine", mtof(m + 12) * rand(0.999, 1.001));
-        wowG.connect(o.detune);
         const og = V.gain(0.018);
         o.connect(og).connect(g);
         srcs.push(o);
@@ -845,7 +850,6 @@ function createMusic(rig, stems) {
     });
     // тёплый бас
     const b = V.osc("sine", mtof(ch.bass + 12));
-    wowG.connect(b.detune);
     const bg = V.gain(0);
     bg.gain.setValueAtTime(0, t);
     bg.gain.setTargetAtTime(0.07, t + 0.3, 1.2);
@@ -853,12 +857,7 @@ function createMusic(rig, stems) {
     b.connect(bg).connect(bassBus);
     srcs.push(b);
     for (const s of srcs) { s.start(t); s.stop(end); }
-    addLive(srcs, end, srcs[srcs.length - 1], nodes, () => {
-      try { sweepG.disconnect(f.frequency); } catch (_) { /* ignore */ }
-      for (const s of srcs) {
-        try { wowG.disconnect(s.detune); } catch (_) { /* ignore */ }
-      }
-    });
+    addLive(srcs, end, srcs[srcs.length - 1], nodes);
   }
 
   function pluck(t, midi, vel, bendFrom) {
@@ -877,16 +876,13 @@ function createMusic(rig, stems) {
     } else {
       s.playbackRate.value = rate;
     }
-    wowG.connect(s.detune);
     const g = V.gain(vel);
     const p = V.pan(rand(-0.35, 0.35));
     s.connect(g).connect(p).connect(pluckBus);
     const end = t + buffer.duration / Math.min(rate, r0) + 0.05;
     s.start(t);
     s.stop(end);
-    addLive([s], end, s, nodes, () => {
-      try { wowG.disconnect(s.detune); } catch (_) { /* ignore */ }
-    });
+    addLive([s], end, s, nodes);
   }
 
   function bell(t, midi, vel) {
@@ -950,8 +946,10 @@ function createMusic(rig, stems) {
       if (started) return;
       started = true;
       const t0 = at;
-      fader.gain.setValueAtTime(0, t0);
-      fader.gain.linearRampToValueAtTime(LEVEL.music, t0 + 5);
+      for (const f of faders) {
+        f.gain.setValueAtTime(0, t0);
+        f.gain.linearRampToValueAtTime(LEVEL.music, t0 + 5);
+      }
       wind.start(t0, rand(0, 3));
       crk.start(t0, rand(0, 6));
       for (const s of persistent) if (s !== wind && s !== crk) s.start(t0);
@@ -987,10 +985,12 @@ function createMusic(rig, stems) {
       if (stopped) return;
       stopped = true;
       const now = ctx.currentTime;
-      const p = fader.gain;
-      if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(now);
-      else { p.cancelScheduledValues(now); p.setValueAtTime(p.value, now); }
-      p.linearRampToValueAtTime(0, now + fade);
+      for (const f of faders) {
+        const p = f.gain;
+        if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(now);
+        else { p.cancelScheduledValues(now); p.setValueAtTime(p.value, now); }
+        p.linearRampToValueAtTime(0, now + fade);
+      }
       const endT = now + fade + 0.1;
       for (const v of live) {
         if (v.end > endT) for (const s of v.srcs) { try { s.stop(endT); } catch (_) { /* ignore */ } }
@@ -1075,7 +1075,14 @@ export function createAudio({ config, env } = {}) {
       const AC = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
       if (!AC) return;
       try { ctx = new AC({ latencyHint: "interactive" }); } catch (_) { ctx = new AC(); }
-      rig = buildRig(ctx);
+      try { rig = buildRig(ctx); }
+      catch (e) {
+        // экзотический браузер без нужных узлов — остаёмся тихими, но не ломаемся
+        try { ctx.close(); } catch (_) { /* ignore */ }
+        ctx = null;
+        rig = null;
+        return;
+      }
       rig.out.gain.value = 0;
       if (!muted) rig.out.gain.setTargetAtTime(1, ctx.currentTime, 0.05);
       // iOS: проиграть пустой буфер внутри жеста
@@ -1170,7 +1177,7 @@ export function createAudio({ config, env } = {}) {
     meow: guard((kind = "short") =>
       play("meow", 90, (r, t) => {
         if (r.meows >= 3) return;
-        meowVoice(r, t, MEOWS[kind] ? kind : "short");
+        meowVoice(r, t, hasKind(kind) ? kind : "short");
       })
     ),
     startPurr: guard(startPurr),
