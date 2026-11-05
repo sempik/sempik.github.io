@@ -27,7 +27,7 @@ cd tools/motion-bg
 node render.cjs --out /tmp/motion-frames --w 1920 --h 1080 --fps 30 --seconds 12 --workers 3
 
 # 2) видео + постер → ../../assets/
-./encode.sh /tmp/motion-frames 30 20
+./encode.sh /tmp/motion-frames 30 18
 ```
 
 - Рендер можно прервать и запустить снова — уже готовые кадры пропускаются (`--overwrite` — перерисовать все).

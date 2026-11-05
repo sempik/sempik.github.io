@@ -505,7 +505,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     }),
     'sk-glowcol',
     {
-      uniforms: { uSelfGlow: { value: 0.75 }, uRimCol: { value: new THREE.Color('#d8c8ff') }, uRim: { value: 0.9 } },
+      uniforms: { uSelfGlow: { value: 0.7 }, uRimCol: { value: new THREE.Color('#b89cff') }, uRim: { value: 0.75 } },
       fragHead: 'uniform float uSelfGlow; uniform vec3 uRimCol; uniform float uRim;',
       fragBody: /* glsl */ `
         #ifdef USE_COLOR
@@ -518,6 +518,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
         }`,
     }
   );
+  let crystals;
   {
     const parts = [];
     const crystalCols = ['#8a63ff', '#a77bff', '#ff6fb8', '#6f4dff', '#c9a6ff'];
@@ -542,9 +543,9 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       addCrystal(Math.cos(ang) * rr, y - 0.08, Math.sin(ang) * rr, 0.16 + rng() * 0.18, 0.05 + rng() * 0.04,
         Math.sin(ang) * out, -Math.cos(ang) * out, crystalCols[(rng() * crystalCols.length) | 0]);
     }
-    const m = new THREE.Mesh(mergeGeometries(parts), crystalMat);
-    spin.add(m);
-    const g = makeGlow('#8f63ff', 2.4, 0.55);
+    crystals = new THREE.Mesh(mergeGeometries(parts), crystalMat);
+    spin.add(crystals);
+    const g = makeGlow('#7f52ff', 2.2, 0.45);
     g.position.set(0, tipY - 0.25, 0);
     spin.add(g);
     const pl = new THREE.PointLight('#9a6bff', 5, 4, 2);
@@ -586,21 +587,22 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       const end = pts[pts.length - 1];
       if (depth >= 2) tips.push({ p: curve.getPoint(0.5), big: false });
       if (depth >= MAX) { tips.push({ p: end.clone(), big: true }); return; }
-      const kids = depth === 0 ? 3 : rng() < 0.55 ? 2 : 3;
+      const kids = depth === 0 ? 4 : rng() < 0.5 ? 2 : 3;
       const parentAz = Math.atan2(d.z, d.x);
       for (let k = 0; k < kids; k++) {
+        const leader = depth === 0 && k === kids - 1; // центральный «лидер» — вверх
         const az = depth === 0
-          ? az0 + (k / kids) * TAU + (rng() - 0.5) * 0.6
-          : parentAz + (k - (kids - 1) / 2) * 1.0 + (rng() - 0.5) * 0.6;
-        const spread = depth === 0 ? 0.95 + rng() * 0.2 : 0.45 + rng() * 0.4;
+          ? az0 + (k / (kids - 1)) * TAU + (rng() - 0.5) * 0.5
+          : parentAz + (k - (kids - 1) / 2) * 0.95 + (rng() - 0.5) * 0.6;
+        const spread = leader ? 0.25 : depth === 0 ? 0.85 + rng() * 0.2 : 0.4 + rng() * 0.4;
         const hor = new THREE.Vector3(Math.cos(az), 0, Math.sin(az));
         const nd = d.clone().multiplyScalar(Math.cos(spread)).addScaledVector(hor, Math.sin(spread));
-        nd.y = lerp(nd.y, 0.3, depth >= 2 ? 0.4 : 0.15);
+        nd.y = lerp(nd.y, 0.42, depth >= 2 ? 0.35 : 0.12);
         nd.normalize();
-        grow(end, nd, len * (0.66 + rng() * 0.12), r1 * 0.95, depth + 1, az);
+        grow(end, nd, len * (leader ? 0.62 : 0.7 + rng() * 0.12), r1 * (leader ? 0.85 : 0.95), depth + 1, az);
       }
     };
-    grow(new THREE.Vector3(0, -0.12, 0), new THREE.Vector3(0.1, 1, 0.04).normalize(), 1.0, 0.17, 0, rng() * TAU);
+    grow(new THREE.Vector3(0, -0.12, 0), new THREE.Vector3(0.08, 1, 0.04).normalize(), 1.1, 0.19, 0, rng() * TAU);
     trunk = new THREE.Mesh(
       mergeGeometries(parts),
       new THREE.MeshStandardMaterial({ color: '#3a2438', roughness: 0.85, flatShading: true })
@@ -615,12 +617,32 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   {
     const blobs = [];
     for (const t of tips) {
-      const count = t.big ? 4 : 2;
+      const count = t.big ? 5 : 3;
       for (let c = 0; c < count; c++) {
-        const off = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize().multiplyScalar(Math.cbrt(rng()) * (t.big ? 0.24 : 0.16));
+        const off = new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize().multiplyScalar(Math.cbrt(rng()) * (t.big ? 0.27 : 0.19));
         off.y = Math.abs(off.y) * 0.6 + 0.02;
         const s = (t.big ? 0.19 : 0.15) + rng() * 0.12;
         blobs.push({ p: t.p.clone().add(off), s });
+      }
+    }
+    // «купол» кроны: дополнительные облачка по верхней поверхности эллипсоида — крона круглая и пышная
+    {
+      const tb = new THREE.Box3();
+      for (const t of tips) tb.expandByPoint(t.p);
+      const c = tb.getCenter(new THREE.Vector3());
+      const r = tb.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+      const pnt = new THREE.Vector3();
+      let added = 0;
+      for (let k = 0; k < 400 && added < 70; k++) {
+        const th = rng() * TAU;
+        const ph = Math.acos(lerp(1, -0.25, rng()));
+        const sh = 0.8 + rng() * 0.25;
+        pnt.set(c.x + Math.sin(ph) * Math.cos(th) * r.x * sh, c.y + Math.cos(ph) * r.y * sh + 0.05, c.z + Math.sin(ph) * Math.sin(th) * r.z * sh);
+        let near = Infinity;
+        for (const t of tips) near = Math.min(near, t.p.distanceToSquared(pnt));
+        if (near > 0.5 * 0.5) continue;
+        blobs.push({ p: pnt.clone(), s: 0.2 + rng() * 0.13 });
+        added++;
       }
     }
     let minY = Infinity, maxY = -Infinity;
@@ -633,7 +655,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       {
         uniforms: {
           uTime: U.uTime, uParty: U.uParty, uShake: U.uShake,
-          uRimCol: { value: new THREE.Color('#ffd6ec') },
+          uRimCol: { value: new THREE.Color('#ffc2e2') },
         },
         vertHead: 'uniform float uTime; uniform float uShake; varying float vPhase;',
         vertBody: /* glsl */ `
@@ -656,7 +678,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
             totalEmissiveRadiance += diffuseColor.rgb * (0.16 + 0.25 * uParty);
             vec3 V = normalize(vViewPosition);
             float fres = pow(1.0 - clamp(abs(dot(normal, V)), 0.0, 1.0), 2.2);
-            totalEmissiveRadiance += mix(uRimCol, diffuseColor.rgb * 1.6, 0.4) * fres * 0.55;
+            totalEmissiveRadiance += mix(uRimCol, diffuseColor.rgb * 1.6, 0.55) * fres * 0.42;
           }`,
       }
     );
@@ -682,8 +704,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       foliage.setMatrixAt(i, m);
       const h = (b.p.y - minY) / Math.max(0.001, maxY - minY);
       col.set(pick());
-      if (h > 0.6) col.lerp(light, (h - 0.6) * 0.6);
-      if (h < 0.3) col.lerp(dark, (0.3 - h) * 0.9);
+      if (h > 0.65) col.lerp(light, (h - 0.65) * 0.5);
+      if (h < 0.35) col.lerp(dark, (0.35 - h) * 1.1);
       foliage.setColorAt(i, col);
     });
     foliage.userData.kind = 'tree';
@@ -908,8 +930,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     const rimCol = col.clone().lerp(new THREE.Color('#ffffff'), 0.5);
     const capMat = patchMaterial(
       new THREE.MeshPhysicalMaterial({
-        color: col, metalness: 0.3, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.06,
-        emissive: col, emissiveIntensity: 0.28, envMap: envTex, envMapIntensity: 1.25,
+        color: col, metalness: 0.15, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.08,
+        emissive: col, emissiveIntensity: 0.22, envMap: envTex, envMapIntensity: 0.7,
       }),
       'sk-logo',
       {
@@ -1017,6 +1039,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     box.expandByObject(islandMesh);
     box.expandByObject(trunk);
     box.expandByObject(foliage);
+    box.expandByObject(crystals);
     let maxR = 0;
     // остров вращается — берём радиус в плоскости XZ
     for (const c of [box.min, box.max]) maxR = Math.max(maxR, Math.abs(c.x), Math.abs(c.z));
@@ -1207,7 +1230,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       k = Math.min((0.52 * h) / HERO.h, (0.44 * w) / HERO.w);
       lay.tcx = 0.68; lay.tcy = 0.5;
     } else {
-      k = Math.min((0.9 * w) / HERO.w, (0.36 * h) / HERO.h);
+      k = Math.min((0.9 * w) / HERO.w, (0.35 * h) / HERO.h);
       lay.tcx = 0.5; lay.tcy = 0.24;
     }
     lay.ts = k / ppw;
@@ -1604,6 +1627,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
           heroRoot.visible = true;
           for (const L of logos) L.group.visible = true;
         }
+        sparks.visible = true;
+        burst.visible = true;
       }
       renderer.render(scene, camera);
     } catch (e) {
@@ -1637,10 +1662,26 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   if (!document.hidden) start();
 
   return {
+    // отладка/тесты: экранные координаты логотипов и кроны
+    _probe() {
+      const toScreen = (obj, local) => {
+        const v = local ? local.clone() : new THREE.Vector3();
+        obj.localToWorld(v).project(camera);
+        const r = canvas.getBoundingClientRect();
+        return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+      };
+      return {
+        logos: logos.map((L) => ({ id: L.link.id, ...toScreen(L.group), z: L.group.getWorldPosition(new THREE.Vector3()).z })),
+        tree: toScreen(treeGroup, canopyCenter),
+        hovered,
+      };
+    },
     // отладка из консоли: sempik.scene._step(1.5) — прокрутить симуляцию вперёд на N секунд
     _step(sec = 1) {
       for (let t = 0; t < sec; t += 1 / 30) update(1 / 30);
       renderer.render(scene, camera);
+      const r = renderer.info.render;
+      return { calls: r.calls, triangles: r.triangles, programs: renderer.info.programs?.length };
     },
     reveal() {
       if (revealed) return;
