@@ -617,31 +617,22 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
 
   // ---------------------------------------------------------------- наклон карточки
   function setupTilt() {
+    // Раньше карточка наклонялась в 3D за курсором, но Chrome при этом рисует её как текстуру
+    // и весь текст «мылится». Теперь карточка стоит ровно (текст всегда чёткий, коту не трясёт
+    // платформу), а за курсором бегает только мягкий блик + подсвечивается рамка.
     if (!card || !motion) return;
     const glare = document.createElement("span");
     $(".card__glare", card)?.appendChild(glare);
-    const MAX_X = 3; // °, вокруг горизонтальной оси — кот сидит на верхней кромке
-    const MAX_Y = 4.5;
-    let tx = 0, ty = 0, cx = 0, cy = 0;
     let gx = 0, gy = 0, cgx = 0, cgy = 0;
     let rect = null;
     let rafId = 0;
 
     function frame() {
       rafId = 0;
-      cx += (tx - cx) * 0.1;
-      cy += (ty - cy) * 0.1;
       cgx += (gx - cgx) * 0.18;
       cgy += (gy - cgy) * 0.18;
-      const still = Math.abs(tx - cx) < 0.01 && Math.abs(ty - cy) < 0.01 &&
-        Math.abs(gx - cgx) < 0.5 && Math.abs(gy - cgy) < 0.5;
-      if (still && tx === 0 && ty === 0) {
-        card.style.transform = "";
-      } else {
-        card.style.transform = `perspective(1600px) rotateX(${cx.toFixed(3)}deg) rotateY(${cy.toFixed(3)}deg)`;
-      }
       glare.style.transform = `translate3d(${cgx.toFixed(1)}px, ${cgy.toFixed(1)}px, 0)`;
-      if (!still) rafId = raf(frame);
+      if (Math.abs(gx - cgx) > 0.5 || Math.abs(gy - cgy) > 0.5) rafId = raf(frame);
     }
     const kick = () => { if (!rafId) rafId = raf(frame); };
 
@@ -652,29 +643,15 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     });
     card.addEventListener("pointermove", (e) => {
       if (e.pointerType !== "mouse") return;
-      if (!rect) {
-        // меряем без наклона, чтобы не было обратной связи
-        const prev = card.style.transform;
-        card.style.transform = "";
-        rect = card.getBoundingClientRect();
-        card.style.transform = prev;
-      }
-      const lx = e.clientX - rect.left;
-      const ly = e.clientY - rect.top;
-      const nx = clamp(lx / rect.width, 0, 1);
-      const ny = clamp(ly / rect.height, 0, 1);
-      ty = (nx - 0.5) * 2 * MAX_Y;
-      tx = -(ny - 0.5) * 2 * MAX_X;
-      gx = lx;
-      gy = ly;
+      if (!rect) rect = card.getBoundingClientRect();
+      gx = clamp(e.clientX - rect.left, 0, rect.width);
+      gy = clamp(e.clientY - rect.top, 0, rect.height);
       if (!card.classList.contains("is-hover")) card.classList.add("is-hover");
       kick();
     });
     card.addEventListener("pointerleave", () => {
-      tx = ty = 0;
       rect = null;
       card.classList.remove("is-hover");
-      kick();
     });
     window.addEventListener("resize", () => { rect = null; }, { passive: true });
     window.addEventListener("scroll", () => { rect = null; }, { passive: true });

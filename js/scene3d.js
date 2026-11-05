@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
 
 const TAU = Math.PI * 2;
@@ -686,24 +686,39 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       }
       for (const t of picked) {
         const out = new THREE.Vector3(t.p.x - canopyCenter.x, 0, t.p.z - canopyCenter.z).normalize();
-        const len = 0.3 + rng() * 0.3;
+        // короткие плотные «кисти»: шарики сильно перекрываются, читаются как свисающая ветка в цвету,
+        // а не как бусы (rng() вызывается столько же раз, чтобы не сдвинуть остальную генерацию)
+        const len = 0.13 + rng() * 0.1;
         const n = 3;
         for (let k = 0; k < n; k++) {
           const u = (k + 1) / n;
           blobs.push({
-            p: t.p.clone().addScaledVector(out, 0.06 + u * 0.08).add(new THREE.Vector3((rng() - 0.5) * 0.06, -len * u, (rng() - 0.5) * 0.06)),
-            s: lerp(0.16, 0.085, u) * grow,
+            p: t.p.clone().addScaledVector(out, 0.04 + u * 0.05).add(new THREE.Vector3((rng() - 0.5) * 0.04, -len * u, (rng() - 0.5) * 0.04)),
+            s: lerp(0.13, 0.085, u) * grow,
             droop: true,
           });
         }
       }
     }
-    // гладкие (не гранёные) шарики: у IcosahedronGeometry(1, 1) нормали уже сферические
-    const geo = new THREE.IcosahedronGeometry(1, 1);
-    const mat = patchMaterial(
-      new THREE.MeshStandardMaterial({ flatShading: false, roughness: 0.55, metalness: 0 }),
-      'sk-foliage',
-      {
+    // «облачко» листвы: не идеальная сфера, а комок с буграми (шум по нормали) и гладкими нормалями;
+    // каждому инстансу — свой случайный поворот, так что одинаковые бугры не повторяются на глаз
+    let geo = new THREE.IcosahedronGeometry(1, lite ? 1 : 2);
+    geo.deleteAttribute('normal');
+    geo.deleteAttribute('uv');
+    geo = mergeVertices(geo);
+    {
+      const pos = geo.attributes.position;
+      const v = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i);
+        const d = 1 + 0.13 * noise.noise3d(v.x * 1.7 + 3.1, v.y * 1.7 - 0.6, v.z * 1.7 - 1.7)
+                    + 0.05 * noise.noise3d(v.x * 4.1 - 2.3, v.y * 4.1 + 1.9, v.z * 4.1 + 0.4);
+        v.multiplyScalar(d);
+        pos.setXYZ(i, v.x, v.y, v.z);
+      }
+      geo.computeVertexNormals();
+    }
+    const foliagePatch = {
         uniforms: {
           uTime: U.uTime, uParty: U.uParty, uShake: U.uShake,
           uRimCol: { value: new THREE.Color('#ffc2e2') },
@@ -732,7 +747,12 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
             // мягкая розовая кайма по краю — будто крону подсвечивают сзади
             totalEmissiveRadiance += mix(uRimCol, diffuseColor.rgb * 1.6, 0.45) * fres * 0.6;
           }`,
-      }
+    };
+    // матовая листва: без пластиковых бликов
+    const mat = patchMaterial(
+      new THREE.MeshStandardMaterial({ flatShading: false, roughness: 0.82, metalness: 0 }),
+      'sk-foliage',
+      foliagePatch
     );
     foliage = new THREE.InstancedMesh(geo, mat, blobs.length);
     const palette = [
@@ -747,22 +767,99 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
     const col = new THREE.Color();
+    const base = new THREE.Color('#ff9ccc');
     const light = new THREE.Color('#fff0f7');
-    const dark = new THREE.Color('#c2408a');
+    const dark = new THREE.Color('#d94f95');
+    const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     blobs.forEach((b, i) => {
       e.set(rng() * TAU, rng() * TAU, rng() * TAU);
       q.setFromEuler(e);
       m.compose(b.p, q, new THREE.Vector3(b.s, b.s * 0.82, b.s));
       foliage.setMatrixAt(i, m);
       const h = Math.max(0, (b.p.y - minY) / Math.max(0.001, maxY - minY));
-      col.set(pick());
-      if (b.droop) col.lerp(light, 0.25);
-      if (h > 0.65) col.lerp(light, (h - 0.65) * 0.5);
-      if (h < 0.35) col.lerp(dark, (0.35 - h) * 1.1);
+      pick(); // оставляем вызов rng(), чтобы не сдвигать остальную процедурную генерацию
+      // плавное цветовое поле вместо случайной палитры: сверху светлее (свет луны), снизу глубже,
+      // плюс крупный мягкий шум ±8% — соседние облачка не контрастируют, как горох
+      col.copy(base);
+      col.lerp(light, smooth(0.45, 1.0, h) * 0.6);
+      col.lerp(dark, (1 - smooth(0.0, 0.42, h)) * 0.55);
+      if (b.droop) col.lerp(light, 0.18);
+      const nv = noise.noise3d(b.p.x * 1.3 + 7.7, b.p.y * 1.3, b.p.z * 1.3 - 4.2);
+      col.offsetHSL(nv * 0.012, 0, nv * 0.06);
       foliage.setColorAt(i, col);
     });
     foliage.userData.kind = 'tree';
     treeGroup.add(foliage);
+
+    // мелкие пятилепестковые цветы по внешней поверхности кроны: дают «цветочную» фактуру
+    // и ломают круглые силуэты облачков
+    {
+      const brng = mulberry32(777001);
+      const N = lite ? 150 : 320;
+      const R = 1;
+      const SEG = 40;
+      const verts = [0, 0, 0.18];
+      const cols = [1.0, 0.36, 0.64];
+      const centre = new THREE.Color('#ff5fa6');
+      const edge = new THREE.Color('#fff4fa');
+      for (let k = 0; k <= SEG; k++) {
+        const th = (k / SEG) * TAU;
+        // 5 лепестков с выемкой на кончике
+        const pet = Math.pow(Math.abs(Math.cos(2.5 * th)), 0.55);
+        const notch = 1 - 0.18 * Math.pow(Math.abs(Math.cos(2.5 * th)), 24);
+        const r = R * (0.38 + 0.62 * pet) * notch;
+        verts.push(Math.cos(th) * r, Math.sin(th) * r, -0.08 * r);
+        const c = centre.clone().lerp(edge, Math.min(1, 0.35 + r * 0.8));
+        cols.push(c.r, c.g, c.b);
+      }
+      const idx = [];
+      for (let k = 1; k <= SEG; k++) idx.push(0, k, k + 1);
+      const fgeo = new THREE.BufferGeometry();
+      fgeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      fgeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      fgeo.setIndex(idx);
+      fgeo.computeVertexNormals();
+      const fmat = patchMaterial(
+        new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.75, metalness: 0 }),
+        'sk-blossom',
+        foliagePatch
+      );
+      const shell = blobs.filter((b) => !b.droop);
+      const flowers = new THREE.InstancedMesh(fgeo, fmat, N);
+      const fm = new THREE.Matrix4();
+      const fq = new THREE.Quaternion();
+      const spin = new THREE.Quaternion();
+      const Z = new THREE.Vector3(0, 0, 1);
+      const d = new THREE.Vector3();
+      const outv = new THREE.Vector3();
+      const fp = new THREE.Vector3();
+      const fc = new THREE.Color();
+      let placed = 0;
+      for (let tries = 0; tries < N * 30 && placed < N; tries++) {
+        const b = shell[(brng() * shell.length) | 0];
+        d.set(brng() - 0.5, brng() - 0.5, brng() - 0.5);
+        if (d.lengthSq() < 1e-4) continue;
+        d.normalize();
+        outv.subVectors(b.p, canopyCenter);
+        outv.y *= 0.6;
+        outv.normalize();
+        // только наружная и верхняя сторона облачка — внутри кроны цветов всё равно не видно
+        if (d.dot(outv) < -0.05 || d.y < -0.35) continue;
+        fp.set(d.x * b.s, d.y * b.s * 0.82, d.z * b.s).multiplyScalar(1.03).add(b.p);
+        fq.setFromUnitVectors(Z, d);
+        spin.setFromAxisAngle(Z, brng() * TAU);
+        fq.multiply(spin);
+        const sc = (0.042 + brng() * 0.03) * (lite ? 1.25 : 1);
+        fm.compose(fp, fq, new THREE.Vector3(sc, sc, sc));
+        flowers.setMatrixAt(placed, fm);
+        fc.setHSL(0.94 + brng() * 0.03, 0.55 + brng() * 0.3, 0.9 + brng() * 0.08);
+        flowers.setColorAt(placed, fc);
+        placed++;
+      }
+      flowers.count = placed;
+      flowers.userData.kind = 'tree';
+      treeGroup.add(flowers);
+    }
 
     const cg = makeGlow('#ff7cc0', 4.6, 0.2);
     cg.position.copy(canopyCenter);

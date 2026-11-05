@@ -225,8 +225,6 @@ html.party .bg-shade::after {
     0 0 120px -50px rgba(155, 123, 255, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
   container: card / inline-size;
-  transform-style: flat;
-  will-change: transform;
 }
 
 /* 1px градиентная рамка */
@@ -268,6 +266,8 @@ html.party .bg-shade::after {
   will-change: transform;
 }
 .card.is-hover .card__glare > span { opacity: 1; }
+.card::before { transition: opacity 0.4s ease, filter 0.4s ease; }
+.card.is-hover::before { filter: brightness(1.35) saturate(1.15); }
 
 /* ---- появление ---- */
 html.js .card {
@@ -1321,7 +1321,8 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   /* остров сверху (scene3d: центр на 22% высоты), карточка ниже — между ними воздух для кота */
   .ui {
     display: block;
-    padding: 44vh var(--gutter) calc(64px + env(safe-area-inset-bottom));
+    /* снизу запас под «полосу пола» кота: в самом низу страницы он не стоит поверх подвала карточки */
+    padding: 44vh var(--gutter) calc(150px + env(safe-area-inset-bottom));
     padding-top: 44svh;
     padding-left: max(var(--gutter), env(safe-area-inset-left));
     padding-right: max(var(--gutter), env(safe-area-inset-right));

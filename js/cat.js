@@ -2123,7 +2123,19 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     cat.rotVis = cat.mode === "ground" ? follow(cat.rotVis, 0, 16, dt) : 0;
     if (cat.mode === "ground") {
       const s = cat.surf;
-      if (!s.floor && !s.stay) fall();
+      // телефон: карточка уезжает вверх при скролле. Раньше кот просто падал вниз — прямо через
+      // кнопки ссылок — и вставал на «пол» поверх контента. Теперь он убегает по кромке карточки
+      // за край экрана, а если кромка уже ушла под верхний ряд кнопок — тихо исчезает там же
+      // (под затемнённой полосой) и вернётся, когда карточку прокрутят обратно.
+      const busy = laser.on || (yarn.on && !yarn.dying);
+      if (!s.floor && !s.stay && isMobile() && !busy) {
+        if (!s.valid) goAway();
+        else {
+          if (cat.task?.type !== "leave") setTask("leave", { dir: cat.x < W / 2 ? -1 : 1 });
+          cat.y = s.top;
+          taskUpdate(dt);
+        }
+      } else if (!s.floor && !s.stay) fall();
       else {
         cat.y = s.top;
         taskUpdate(dt);
@@ -2152,7 +2164,10 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
         if (cat.x < l - 2) { cat.x = l; cat.vx = Math.max(cat.vx, 0); }
         if (cat.x > r + 2) { cat.x = r; cat.vx = Math.min(cat.vx, 0); }
       }
-      if (!s.floor && (cat.x < s.left - 14 * K || cat.x > s.right + 14 * K)) fall();
+      if (!s.floor && cat.task?.type === "leave" && isMobile()) {
+        // убегая по карточке, кот не спрыгивает вниз через контент, а уходит за край
+        if (cat.x <= l + 1 || cat.x >= r - 1) goAway();
+      } else if (!s.floor && (cat.x < s.left - 14 * K || cat.x > s.right + 14 * K)) fall();
       const spd = Math.abs(cat.vx) / K;
       TG.move = clamp(spd / 22, 0, 1);
       TG.run = clamp((spd - 140) / 130, 0, 1);
