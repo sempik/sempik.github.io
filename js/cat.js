@@ -2293,14 +2293,22 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     const rx = (29 - 6 * sit + 3 * loaf) * K + pad, ry = (17 + 7 * sit - 5 * loaf) * K + pad;
     return (lx * lx) / (rx * rx) + (ly * ly) / (ry * ry) < 1;
   }
-  // есть ли непрозрачные пиксели кота в радиусе r вокруг точки
+  // есть ли непрозрачные пиксели кота в радиусе r вокруг точки. Копируем крошечный кусок холста
+  // в маленький CPU-холст и читаем уже его — без дорогого (и шумного в консоли) getImageData по GPU-холсту
+  let hitCtx = null;
   function pixelHit(x, y, r) {
     try {
-      const d = Math.max(1, Math.round(r * DPR));
-      const px = Math.round(x * DPR), py = Math.round(y * DPR);
-      const x0 = clamp(px - d, 0, canvas.width - 1), y0 = clamp(py - d, 0, canvas.height - 1);
-      const w = Math.max(1, Math.min(2 * d + 1, canvas.width - x0)), h = Math.max(1, Math.min(2 * d + 1, canvas.height - y0));
-      const data = ctx.getImageData(x0, y0, w, h).data;
+      if (!hitCtx) {
+        const c = document.createElement("canvas");
+        c.width = c.height = 64;
+        hitCtx = c.getContext("2d", { willReadFrequently: true });
+      }
+      const d = Math.min(31, Math.max(1, Math.round(r * DPR)));
+      const sz = 2 * d + 1;
+      const px = Math.round(x * DPR) - d, py = Math.round(y * DPR) - d;
+      hitCtx.clearRect(0, 0, 64, 64);
+      hitCtx.drawImage(canvas, px, py, sz, sz, 0, 0, sz, sz);
+      const data = hitCtx.getImageData(0, 0, sz, sz).data;
       for (let i = 3; i < data.length; i += 4) if (data[i] > 60) return true;
       return false;
     } catch (_) {

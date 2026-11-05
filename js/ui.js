@@ -65,12 +65,14 @@ function createToaster(el) {
 
   const durFor = (msg) => clamp(1700 + msg.length * 45, 2000, 4200);
 
+  let shownAt = 0;
   function next() {
     const item = queue.shift();
     if (item == null) { current = null; currentKey = null; return; }
     const msg = item.msg;
     current = msg;
     currentKey = item.key;
+    shownAt = performance.now();
     el.textContent = msg;
     el.classList.remove("is-on");
     void el.offsetWidth; // перезапуск анимации
@@ -102,9 +104,11 @@ function createToaster(el) {
     if (queue.length > 3) queue.splice(0, queue.length - 3);
     if (current === null) next();
     else if (el.classList.contains("is-on")) {
-      // есть очередь — текущее досматриваем коротко (а устаревшее с тем же ключом убираем сразу)
+      // есть очередь — не ждём, пока текущее доиграет: даём ему побыть на экране полсекунды
+      // (устаревшее с тем же ключом — сразу) и меняем текст на месте, без паузы на исчезание
       clearTimeout(timer);
-      timer = setTimeout(hide, key && key === currentKey ? 120 : 650);
+      const left = key && key === currentKey ? 0 : Math.max(0, 500 - (performance.now() - shownAt));
+      timer = setTimeout(next, left);
     }
   }
   return show;
