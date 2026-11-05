@@ -180,7 +180,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   const surfL = (s) => (s.floor ? floorL() : Math.max(s.left, wallL()));
   const surfR = (s) => (s.floor ? floorR() : Math.min(s.right, wallR()));
   // 3D-герой (остров с деревом) на экране — присылает scene3d.js; пузырь реплики его не закрывает
-  let heroBox = null;
+  let heroBox = window.__sempikHero || null;
   window.addEventListener("sempik:hero", (e) => { heroBox = e?.detail || null; });
 
   // ---------------------------------------------------------------- платформы ([data-cat-platform])
@@ -599,10 +599,23 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     if (pet.purring) { sfx("stopPurr"); pet.purring = false; }
     setCursor("");
   }
+  // куда приземлиться на платформу: на маленьких телефонах остров висит прямо над карточкой —
+  // садимся сбоку от него, чтобы голова и уши не залезали на 3D-героя
+  function pickLandX(p) {
+    const l = surfL(p), r = surfR(p);
+    const hb = heroBox;
+    if (hb && isMobile() && p.top - (hb.y + hb.h) < 60 * K && hb.x < r && hb.x + hb.w > l) {
+      const right0 = hb.x + hb.w * 0.92 + 18 * K;
+      if (r - right0 > 24 * K) return rand(right0, r);
+      const left1 = hb.x + hb.w * 0.08 - 18 * K;
+      if (left1 - l > 24 * K) return rand(l, left1);
+    }
+    return lerp(l, r, rand(0.55, 0.85));
+  }
   // вернуться: спрыгнуть сверху на карточку (или к игрушке, если с ней играют)
   function comeBack(p) {
     let x;
-    if (p) x = lerp(surfL(p), surfR(p), rand(0.55, 0.85));
+    if (p) x = pickLandX(p);
     else if (laser.on && laser.has) x = laser.x + rand(-60, 60) * K;
     else if (yarn.on) x = yarn.x + rand(-60, 60) * K;
     else x = W * 0.5;
@@ -2680,7 +2693,7 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
       let x = W * 0.5;
       // приземлиться на карточку, если она видна
       const p = plats.find((q) => q.valid);
-      if (p) x = lerp(surfL(p), surfR(p), rand(0.55, 0.85));
+      if (p) x = pickLandX(p);
       cat.x = clamp(x, wallL(), wallR());
       cat.y = -95 * K;
       cat.vx = 0;

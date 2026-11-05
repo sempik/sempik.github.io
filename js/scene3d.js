@@ -1329,7 +1329,11 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     };
   }
   function announceHero() {
-    try { window.dispatchEvent(new CustomEvent('sempik:hero', { detail: heroRect() })); } catch (_) { /* старый браузер */ }
+    try {
+      const detail = heroRect();
+      window.__sempikHero = detail; // для модулей, которые подключатся позже
+      window.dispatchEvent(new CustomEvent('sempik:hero', { detail }));
+    } catch (_) { /* старый браузер */ }
   }
   function applyLayout(dt, snap) {
     if (snap || !lay.ready) {
