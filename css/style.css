@@ -873,6 +873,26 @@ html.entered .controls {
 .ctl--music[aria-pressed="true"] .eq { display: flex; }
 .controls.is-muted .eq i { animation-play-state: paused; opacity: 0.5; }
 
+/* телефон: когда карточка уезжает под верхний ряд кнопок — притемняем полосу под ними,
+   чтобы текст не мешался с кнопками */
+.chrome-scrim { display: none; }
+@media (max-width: 899.98px) {
+  .chrome-scrim {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    z-index: 79;
+    height: calc(92px + env(safe-area-inset-top));
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(7, 5, 12, 0.92) 0%, rgba(7, 5, 12, 0.7) 52%, rgba(7, 5, 12, 0) 100%);
+    opacity: 0;
+    transition: opacity 0.45s ease;
+  }
+  html.entered.is-scrolled .chrome-scrim { opacity: 1; }
+}
+
 /* =========================================================================
    5. Тост
    ========================================================================= */

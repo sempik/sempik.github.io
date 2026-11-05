@@ -2365,6 +2365,13 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   border:1px solid var(--tip-border,rgba(255,140,198,.3));padding:6px 8px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
 @media (hover:hover){.kex-toy:hover::after{opacity:1;transform:none;transition-delay:.35s}}
 .kex-toy:focus-visible::after{opacity:1;transform:none}
+/* десктоп: столбиком у левого края — так кнопки никогда не залезают под карточку, даже на низких экранах */
+@media (min-width:900px){
+  .kex-toys{flex-direction:column}
+  .kex-toy::after{left:calc(100% + 10px);top:50%;bottom:auto;transform:translate(-4px,-50%)}
+  @media (hover:hover){.kex-toy:hover::after{transform:translate(0,-50%)}}
+  .kex-toy:focus-visible::after{transform:translate(0,-50%)}
+}
 /* телефон: внизу экрана под кнопками оказываются ссылки карточки — уводим игрушки в верхний ряд, к кнопкам звука */
 @media (max-width:899.98px){
   .kex-toys{top:max(var(--chrome-edge,16px),env(safe-area-inset-top));bottom:auto;transform:translateY(-10px) scale(.9)}
@@ -2446,7 +2453,11 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
       b.vx = rand(220, 340) * (W < 600 ? 0.75 : 1);
       b.vy = rand(60, 180);
     } else {
-      b.y = r.top - b.r;
+      // кнопки столбиком (десктоп) — клубок вылетает вбок, а не сквозь соседнюю кнопку
+      let col = false;
+      try { col = getComputedStyle(toysEl).flexDirection.startsWith("column"); } catch (_) { /* ок */ }
+      if (col) b.x = r.right + b.r;
+      b.y = col ? r.top + r.height / 2 : r.top - b.r;
       b.vx = rand(380, 520) * (W < 600 ? 0.75 : 1);
       b.vy = -rand(700, 900);
     }

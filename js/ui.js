@@ -129,6 +129,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
   setupCursor();
   setupParty();
   setupTitle();
+  setupScrolled();
 
   // ---------------------------------------------------------------- тексты карточки
   function fillStatic() {
@@ -812,6 +813,17 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       });
       av.addEventListener("animationend", () => av.classList.remove("is-boop"));
     }
+  }
+
+  // ---------------------------------------------------------------- прокрутка (для затемнения под кнопками)
+  function setupScrolled() {
+    let on = null;
+    const check = () => {
+      const next = (window.scrollY || 0) > 24;
+      if (next !== on) { on = next; root.classList.toggle("is-scrolled", next); }
+    };
+    window.addEventListener("scroll", check, { passive: true });
+    check();
   }
 
   // ---------------------------------------------------------------- заголовок вкладки
