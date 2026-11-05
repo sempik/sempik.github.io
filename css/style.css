@@ -1269,7 +1269,8 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
 
 /* невысокие ноутбуки */
 @media (min-width: 900px) and (max-height: 820px) {
-  .ui { padding-top: 110px; padding-bottom: 32px; }
+  /* сверху ≥ 128px — иначе коту (cat.js: 96px × масштаб 1.28) негде стоять на карточке и он уходит на пол */
+  .ui { padding-top: 128px; padding-bottom: 24px; }
   .card { padding: 24px 26px 16px; }
   .avatar { width: 74px; height: 74px; }
   .tagline { margin-top: 16px; }
@@ -1281,6 +1282,26 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .gh__stats svg { display: none; }
   .gh__recent { margin-top: 6px; }
   .card__foot { margin-top: 14px; padding-top: 11px; }
+}
+
+/* совсем невысокие окна (ноутбук 1366×768 / 1280×720 минус панели браузера) — карточка ещё плотнее,
+   чтобы целиком влезала под котом без прокрутки */
+@media (min-width: 900px) and (max-height: 720px), (min-width: 900px) and (max-width: 1100px) and (max-height: 820px) {
+  .ui { padding-top: 126px; padding-bottom: 10px; }
+  .card { padding: 20px 24px 12px; }
+  .card__head { gap: 16px; }
+  .avatar { width: 62px; height: 62px; }
+  .name { font-size: clamp(32px, 2.7vw, 40px); }
+  .status { margin-top: 9px; }
+  .tagline { margin-top: 12px; font-size: 13px; }
+  .about { margin-top: 6px; font-size: 13.5px; line-height: 1.5; }
+  .links { margin-top: 12px; }
+  .links__list { gap: 8px; }
+  .link { min-height: 50px; padding-top: 7px; padding-bottom: 7px; }
+  .link__icon { width: 36px; height: 36px; border-radius: 11px; }
+  .gh__head { margin: 12px 0 7px; }
+  .gh__recent { display: none !important; }
+  .card__foot { margin-top: 11px; padding-top: 9px; }
 }
 
 /* большие мониторы — карточка чуть крупнее, чтобы не потерялась */
