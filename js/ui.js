@@ -338,6 +338,9 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       setTimeout(() => { try { onEnter?.(); } catch (e) { console.error("[sempik] onEnter", e); } }, 0);
       return;
     }
+    // пока висит заставка, невидимая карточка не должна ловить Tab
+    const hidden = [$(".ui"), $(".controls")].filter(Boolean);
+    hidden.forEach((el) => { el.inert = true; });
     const hint = $(".splash__hint-text", splash);
     if (hint) hint.textContent = env.coarse ? "[ тапни, чтобы войти ]" : "[ нажми, чтобы войти ]";
     splash.classList.add("is-ready");
@@ -361,6 +364,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       window.removeEventListener("keydown", onKey, true);
       // строго синхронно в обработчике жеста — иначе браузер не даст включить звук
       try { onEnter?.(); } catch (e) { console.error("[sempik] onEnter", e); }
+      hidden.forEach((el) => { el.inert = false; });
 
       splash.style.setProperty("--x", `${Math.round(x)}px`);
       splash.style.setProperty("--y", `${Math.round(y)}px`);

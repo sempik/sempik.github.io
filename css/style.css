@@ -178,7 +178,7 @@ button { font: inherit; color: inherit; }
   position: relative;
   isolation: isolate;
   pointer-events: auto;
-  width: clamp(360px, 32vw, 460px);
+  width: clamp(380px, 32vw, 460px);
   padding: 30px 30px 20px;
   border-radius: var(--radius);
   background:
@@ -444,7 +444,7 @@ html.js.entered .reveal {
 
 /* ---- о себе ---- */
 .about {
-  margin: 8px 0 0;
+  margin: 12px 0 0;
   font-size: 15px;
   line-height: 1.62;
   color: var(--ink-2);
@@ -463,8 +463,15 @@ html.js.entered .reveal {
 }
 .links__list > li { min-width: 0; }
 .links__list > li:last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* узкая карточка: две колонки без стрелок, совсем узкая — одна колонка */
 @container card (max-width: 379px) {
+  .link { gap: 10px; padding-right: 12px; }
+  .link__go { display: none; }
+}
+@container card (max-width: 319px) {
   .links__list { grid-template-columns: 1fr; }
+  .link { gap: 12px; padding-right: 14px; }
+  .link__go { display: block; }
 }
 
 .link {
@@ -1210,6 +1217,9 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .links { margin-top: 16px; }
   .link { min-height: 56px; }
   .gh__head { margin-top: 16px; }
+  .gh__stats li { padding: 5px 8px; font-size: 11px; }
+  .gh__stats svg { display: none; }
+  .gh__recent { margin-top: 6px; }
   .card__foot { margin-top: 14px; padding-top: 11px; }
 }
 
