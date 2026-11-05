@@ -40,15 +40,22 @@
 }
 </script>
 <script>
-  // js есть → прячем карточку до входа; страховка: если модули так и не поднялись — убираем заставку
+  // js есть → карточка прячется до входа. Страховка: если main.js так и не поднялся
+  // (например, сломан config.js), заставку всё равно можно закрыть кликом.
   document.documentElement.classList.add("js");
   addEventListener("load", function () {
     setTimeout(function () {
-      if (window.sempik) return;
       var s = document.getElementById("splash");
-      if (s) s.remove();
-      document.documentElement.classList.add("entered");
-    }, 8000);
+      if (window.sempik || !s) return;
+      var h = s.querySelector(".splash__hint-text");
+      if (h) h.textContent = "[ нажми, чтобы войти ]";
+      s.classList.add("is-ready");
+      s.addEventListener("click", function () {
+        if (window.sempik) return;
+        s.remove();
+        document.documentElement.classList.add("entered");
+      });
+    }, 12000);
   });
 </script>
 <script type="module" src="js/main.js"></script>

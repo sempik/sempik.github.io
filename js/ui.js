@@ -277,7 +277,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     const go = $(".link__go", el);
     clearTimeout(copyTimers.get(el));
     el.classList.add("is-copied");
-    if (sub) sub.textContent = "скопировано ✓";
+    if (sub) sub.textContent = "в буфере ✓";
     if (go) go.outerHTML = CHECK_SVG;
     copyTimers.set(
       el,
@@ -341,7 +341,6 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     const hint = $(".splash__hint-text", splash);
     if (hint) hint.textContent = env.coarse ? "[ тапни, чтобы войти ]" : "[ нажми, чтобы войти ]";
     splash.classList.add("is-ready");
-    try { splash.focus({ preventScroll: true }); } catch (_) { /* не критично */ }
 
     // растущая «дырка» требует анимируемой CSS-переменной; без неё — просто растворяемся
     let canMask = false;
@@ -356,7 +355,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     } catch (_) { canMask = false; }
 
     let done = false;
-    function enter(x, y) {
+    function enter(x, y, viaKeyboard) {
       if (done) return;
       done = true;
       window.removeEventListener("keydown", onKey, true);
@@ -368,27 +367,25 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       splash.setAttribute("aria-hidden", "true");
       if (reduced || !canMask) splash.classList.add("is-fading");
       else splash.classList.add("is-leaving");
-      // фокус — на первую ссылку карточки, чтобы клавиатура не терялась
-      setTimeout(() => {
-        try {
-          if (document.activeElement === splash || document.activeElement === document.body) {
-            $(".link")?.focus({ preventScroll: true });
-          }
-        } catch (_) { /* не критично */ }
-      }, 50);
+      // вошли с клавиатуры — переводим фокус на первую ссылку, чтобы он не потерялся
+      if (viaKeyboard) {
+        setTimeout(() => {
+          try { $(".link")?.focus({ preventScroll: true }); } catch (_) { /* не критично */ }
+        }, 50);
+      }
       setTimeout(() => splash.remove(), reduced ? 750 : 1150);
     }
     function onKey(e) {
       if (e.repeat) return;
       if (e.key === "Enter" || e.key === " " || e.code === "Space" || e.key === "Spacebar") {
         e.preventDefault();
-        enter(innerWidth / 2, innerHeight / 2);
+        enter(innerWidth / 2, innerHeight / 2, true);
       }
     }
     splash.addEventListener("click", (e) => {
       const x = e.detail === 0 ? innerWidth / 2 : e.clientX;
       const y = e.detail === 0 ? innerHeight / 2 : e.clientY;
-      enter(x, y);
+      enter(x, y, e.detail === 0);
     });
     window.addEventListener("keydown", onKey, true);
   }
@@ -511,7 +508,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     if (cached) { render(cached); return; }
 
     const ctrl = typeof AbortController === "function" ? new AbortController() : null;
-    const to = setTimeout(() => ctrl?.abort(), 8000);
+    const to = setTimeout(() => ctrl?.abort(), 10000);
     const opts = { signal: ctrl?.signal, headers: { Accept: "application/vnd.github+json" } };
     const base = `https://api.github.com/users/${encodeURIComponent(user)}`;
     const json = (r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))));

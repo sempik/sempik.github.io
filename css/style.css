@@ -504,7 +504,7 @@ html.js.entered .reveal {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(130% 160% at var(--px, 20%) var(--py, 50%), color-mix(in srgb, var(--brand) 26%, transparent), transparent 62%);
+    radial-gradient(130% 160% at var(--px, 20%) var(--py, 50%), color-mix(in srgb, var(--brand) 19%, transparent), transparent 62%);
   opacity: 0;
   transition: opacity 0.4s ease;
 }
@@ -1056,14 +1056,14 @@ html.kex-laser .trail-petal { display: none; }
 .splash__title::before {
   z-index: 1;
   color: var(--hot);
-  transform: translate(-0.025em, 0.008em);
+  transform: translate(-0.02em, 0.006em);
   opacity: 0.9;
   animation: glitchA 4.2s steps(1) 1.4s infinite;
 }
 .splash__title::after {
   z-index: 3;
   color: var(--cyan);
-  transform: translate(0.025em, -0.008em);
+  transform: translate(0.02em, -0.006em);
   opacity: 0.55;
   animation: glitchB 4.2s steps(1) 1.4s infinite;
 }
@@ -1072,23 +1072,23 @@ html.kex-laser .trail-petal { display: none; }
   to { opacity: 1; transform: none; filter: blur(0); letter-spacing: -0.05em; }
 }
 @keyframes glitchA {
-  0%, 78%, 100% { clip-path: inset(0 0 0 0); transform: translate(-0.025em, 0.008em); }
+  0%, 78%, 100% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.02em, 0.006em); }
   80% { clip-path: inset(14% 0 62% 0); transform: translate(-0.09em, 0); }
   82% { clip-path: inset(58% 0 18% 0); transform: translate(0.06em, 0.01em); }
   84% { clip-path: inset(32% 0 44% 0); transform: translate(-0.05em, 0); }
   86% { clip-path: inset(78% 0 4% 0); transform: translate(0.04em, 0); }
-  88% { clip-path: inset(0 0 0 0); transform: translate(-0.025em, 0.008em); }
+  88% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.02em, 0.006em); }
   93% { clip-path: inset(44% 0 40% 0); transform: translate(0.08em, 0); }
-  94% { clip-path: inset(0 0 0 0); transform: translate(-0.025em, 0.008em); }
+  94% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.02em, 0.006em); }
 }
 @keyframes glitchB {
-  0%, 78%, 100% { clip-path: inset(0 0 0 0); transform: translate(0.025em, -0.008em); }
+  0%, 78%, 100% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.02em, -0.006em); }
   80% { clip-path: inset(66% 0 10% 0); transform: translate(0.08em, 0); }
   82% { clip-path: inset(8% 0 70% 0); transform: translate(-0.07em, -0.01em); }
   84% { clip-path: inset(40% 0 36% 0); transform: translate(0.05em, 0); }
-  86% { clip-path: inset(0 0 0 0); transform: translate(0.025em, -0.008em); }
+  86% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.02em, -0.006em); }
   92% { clip-path: inset(20% 0 64% 0); transform: translate(-0.06em, 0); }
-  93% { clip-path: inset(0 0 0 0); transform: translate(0.025em, -0.008em); }
+  93% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.02em, -0.006em); }
 }
 @keyframes glitchMain {
   0%, 79%, 100% { transform: none; }
