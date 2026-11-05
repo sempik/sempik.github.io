@@ -259,7 +259,10 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({
-      canvas, alpha: true, antialias: (window.devicePixelRatio || 1) < 1.5, powerPreference: 'high-performance',
+      // MSAA только там, где буфер небольшой: на ретине (DPR 2 → буфер 2880×1800) он дорогой и почти незаметен,
+      // а на телефоне холст и так ограничен DPR 1.5
+      canvas, alpha: true, powerPreference: 'high-performance',
+      antialias: Math.min(window.devicePixelRatio || 1, innerWidth < 900 ? 1.5 : 2) < 1.75,
     });
   } catch (e) {
     console.warn('[sempik] WebGL недоступен — 3D-сцена выключена', e);

@@ -1337,7 +1337,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
     background:
       radial-gradient(120% 60% at 0% 0%, rgba(155, 123, 255, 0.16), transparent 60%),
       radial-gradient(110% 60% at 100% 100%, rgba(255, 61, 154, 0.11), transparent 60%),
-      rgba(14, 8, 26, 0.88);
+      rgba(14, 8, 26, 0.93);
   }
   .card__head { gap: 16px; }
   .avatar { width: 76px; height: 76px; }
