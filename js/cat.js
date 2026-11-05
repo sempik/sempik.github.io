@@ -604,7 +604,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   function pickLandX(p) {
     const l = surfL(p), r = surfR(p);
     const hb = heroBox;
-    if (hb && isMobile() && p.top - (hb.y + hb.h) < 60 * K && hb.x < r && hb.x + hb.w > l) {
+    if (hb && isMobile() && p.top - (hb.y + hb.h) < 85 * K && hb.x < r && hb.x + hb.w > l) {
       const right0 = hb.x + hb.w * 0.92 + 18 * K;
       if (r - right0 > 24 * K) return rand(right0, r);
       const left1 = hb.x + hb.w * 0.08 - 18 * K;
