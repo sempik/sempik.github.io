@@ -1631,6 +1631,9 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     raf = requestAnimationFrame(frame);
     const dt = last ? Math.min(0.05, Math.max(0, (now - last) / 1000)) : 1 / 60;
     last = now;
+    // пока непрозрачная заставка закрывает экран, сцену всё равно не видно — после кадра прогрева
+    // не рисуем, чтобы заставка и её «дырка» на входе шли плавно (особенно на слабых видеокартах)
+    if (!firstFrame && !revealed && document.getElementById('splash')) return;
     try {
       update(dt);
       if (firstFrame) {
