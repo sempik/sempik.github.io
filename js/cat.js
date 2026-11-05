@@ -2345,25 +2345,31 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   const style = document.createElement("style");
   style.id = "kex-cat-style";
   style.textContent = `
-.kex-toys{position:fixed;left:max(16px,env(safe-area-inset-left));bottom:max(16px,env(safe-area-inset-bottom));z-index:80;display:flex;gap:10px;
+/* вид кнопок берём из общих переменных хрома (css/style.css), фолбэки — на случай, если стилей нет */
+.kex-toys{position:fixed;left:max(var(--chrome-edge,16px),env(safe-area-inset-left));bottom:max(var(--chrome-edge,16px),env(safe-area-inset-bottom));z-index:80;display:flex;gap:10px;
   opacity:0;transform:translateY(14px) scale(.9);pointer-events:none;transition:opacity .6s ease,transform .7s cubic-bezier(.2,.9,.25,1.25)}
 .kex-toys.is-on{opacity:1;transform:none;pointer-events:auto}
-.kex-toy{all:unset;box-sizing:border-box;position:relative;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
-  background:radial-gradient(120% 120% at 30% 20%,rgba(255,255,255,.09),rgba(255,255,255,0) 55%),rgba(20,11,34,.58);
-  border:1px solid rgba(255,140,198,.3);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.45),0 0 18px rgba(255,61,154,.16);
-  -webkit-backdrop-filter:blur(12px) saturate(1.4);backdrop-filter:blur(12px) saturate(1.4);
-  transition:transform .25s cubic-bezier(.2,.9,.3,1.3),box-shadow .25s,border-color .25s,background-color .25s;-webkit-tap-highlight-color:transparent}
-@media (hover:hover){.kex-toy:hover{transform:translateY(-2px);border-color:rgba(255,140,198,.65);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 10px 26px rgba(0,0,0,.5),0 0 26px rgba(255,61,154,.38)}}
+.kex-toy{all:unset;box-sizing:border-box;position:relative;width:var(--chrome-size,44px);height:var(--chrome-size,44px);border-radius:50%;display:grid;place-items:center;cursor:pointer;
+  background:var(--chrome-bg,rgba(18,10,32,.55));
+  border:1px solid var(--chrome-border,rgba(255,255,255,.13));
+  box-shadow:var(--chrome-shadow,0 10px 26px -8px rgba(0,0,0,.6));
+  -webkit-backdrop-filter:var(--chrome-blur,blur(14px));backdrop-filter:var(--chrome-blur,blur(14px));
+  transition:transform .3s cubic-bezier(.3,1.5,.5,1),box-shadow .3s,border-color .25s,background-color .25s;-webkit-tap-highlight-color:transparent}
+@media (hover:hover){.kex-toy:hover{transform:translateY(-2px);border-color:var(--chrome-border-hi,rgba(255,140,198,.6));box-shadow:var(--chrome-shadow-hi,0 0 24px -4px rgba(255,61,154,.5))}}
 .kex-toy:active{transform:scale(.92)}
 .kex-toy:focus-visible{outline:2px solid #ff8cc6;outline-offset:3px}
-.kex-toy[aria-pressed="true"]{border-color:#ff8cc6;background-color:rgba(255,61,154,.2);
-  box-shadow:inset 0 0 0 1px rgba(255,140,198,.45),inset 0 0 14px rgba(255,61,154,.35),0 0 30px rgba(255,61,154,.55)}
-.kex-toy::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 9px);transform:translate(-50%,4px);white-space:nowrap;
-  font:600 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.02em;color:#f6f0ff;background:rgba(20,11,34,.82);
-  border:1px solid rgba(255,140,198,.3);padding:6px 8px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
-@media (hover:hover){.kex-toy:hover::after{opacity:1;transform:translate(-50%,0)}}
-.kex-toy:focus-visible::after{opacity:1;transform:translate(-50%,0)}
+.kex-toy[aria-pressed="true"]{border-color:var(--chrome-border-hi,#ff8cc6);background:var(--chrome-bg-on,rgba(64,14,52,.62));
+  box-shadow:var(--chrome-shadow-on,0 0 26px -4px rgba(255,61,154,.55))}
+.kex-toy::after{content:attr(data-tip);position:absolute;left:0;bottom:calc(100% + 9px);transform:translateY(4px);white-space:nowrap;
+  font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.02em;color:#f6f0ff;background:var(--tip-bg,rgba(18,10,32,.86));
+  border:1px solid var(--tip-border,rgba(255,140,198,.3));padding:6px 8px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+@media (hover:hover){.kex-toy:hover::after{opacity:1;transform:none;transition-delay:.35s}}
+.kex-toy:focus-visible::after{opacity:1;transform:none}
+/* телефон: внизу экрана под кнопками оказываются ссылки карточки — уводим игрушки в верхний ряд, к кнопкам звука */
+@media (max-width:899.98px){
+  .kex-toys{top:max(var(--chrome-edge,16px),env(safe-area-inset-top));bottom:auto;transform:translateY(-10px) scale(.9)}
+  .kex-toy::after{top:calc(100% + 9px);bottom:auto;transform:translateY(-4px)}
+}
 .kex-dot{width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 38% 34%,#fff 0 16%,#ff4a4a 42%,#c3001c 100%);
   box-shadow:0 0 10px 2px rgba(255,40,60,.7)}
 .kex-toy[aria-pressed="true"] .kex-dot{animation:kexPulse 1.1s ease-in-out infinite}
@@ -2433,9 +2439,17 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
     const r = yarnBtn.getBoundingClientRect();
     b.on = true; b.dying = false; b.alpha = 0;
     b.r = 15 * K / 1.25;
-    b.x = r.left + r.width / 2; b.y = r.top - b.r;
-    b.vx = rand(380, 520) * (W < 600 ? 0.75 : 1);
-    b.vy = -rand(700, 900);
+    b.x = r.left + r.width / 2;
+    if (r.top < H / 2) {
+      // кнопки сверху (телефон) — клубок вываливается вниз
+      b.y = r.bottom + b.r;
+      b.vx = rand(220, 340) * (W < 600 ? 0.75 : 1);
+      b.vy = rand(60, 180);
+    } else {
+      b.y = r.top - b.r;
+      b.vx = rand(380, 520) * (W < 600 ? 0.75 : 1);
+      b.vy = -rand(700, 900);
+    }
     b.ground = false; b.grabbed = false; b.ang = 0; b.surf = floorSurf; b.boredUntil = 0;
     for (let i = 0; i < YN; i++) { b.hx[i] = b.hpx[i] = b.x; b.hy[i] = b.hpy[i] = b.y; }
     wake(false);

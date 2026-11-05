@@ -1301,6 +1301,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
 
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
+  const anchorCam = new THREE.PerspectiveCamera();
   const treeProxies = [islandMesh];
   {
     // невидимые «хитбоксы»: крона-эллипсоид + ствол — дешевле, чем рейкаст по сотням инстансов
@@ -1694,6 +1695,29 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       renderer.render(scene, camera);
       const r = renderer.info.render;
       return { calls: r.calls, triangles: r.triangles, programs: renderer.info.programs?.length };
+    },
+    // где на экране центр гало за деревом (CSS px, без покачивания и параллакса) и его радиус —
+    // по этой точке main.js подгоняет «затмение» в фоновом видео, чтобы кольца были концентричны
+    anchor() {
+      try {
+        const r = canvas.getBoundingClientRect();
+        computeLayout();
+        const w = r.width || lay.w, h = r.height || lay.h;
+        anchorCam.copy(camera);
+        anchorCam.position.copy(CAM_BASE);
+        anchorCam.lookAt(LOOK);
+        anchorCam.setViewOffset(w, h, w / 2 - lay.tcx * w, h / 2 - lay.tcy * h, w, h);
+        anchorCam.updateMatrixWorld(true);
+        const s = lay.ts;
+        const c = new THREE.Vector3(0, (halo.position.y - HERO.cy) * s, halo.position.z * s);
+        const e = c.clone();
+        e.x += HALO_R * 0.8 * s;
+        c.project(anchorCam);
+        e.project(anchorCam);
+        const x = r.left + ((c.x + 1) / 2) * w;
+        const y = r.top + ((1 - c.y) / 2) * h;
+        return { x, y, r: Math.abs(r.left + ((e.x + 1) / 2) * w - x) };
+      } catch (_) { return null; }
     },
     reveal() {
       if (revealed) return;

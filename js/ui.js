@@ -407,22 +407,26 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       const muted = !!audio.muted;
       snd?.setAttribute("aria-pressed", String(!muted));
       snd?.setAttribute("aria-label", muted ? "Включить звук" : "Выключить звук");
-      if (snd) snd.title = muted ? "звук выключен" : "звук включён";
+      if (snd) snd.dataset.tip = muted ? "звук выключен" : "звук включён";
       box.classList.toggle("is-muted", muted);
     }
     function syncMusic() {
       const on = !!audio.musicPlaying;
       mus?.setAttribute("aria-pressed", String(on));
       mus?.setAttribute("aria-label", on ? "Выключить музыку" : "Включить музыку");
-      if (mus) mus.title = on ? "музыка играет" : "музыка";
+      if (mus) mus.dataset.tip = on ? "музыка играет" : "музыка";
     }
-    snd?.addEventListener("click", () => {
+    // после клика мышью снимаем фокус — иначе стрелки (Konami) зажгут на кнопке рамку фокуса
+    const blurIfMouse = (e, b) => { if (e.detail > 0) { try { b.blur(); } catch (_) { /* ок */ } } };
+    snd?.addEventListener("click", (e) => {
+      blurIfMouse(e, snd);
       const next = !audio.muted;
       call(audio, "setMuted", next);
       if (!next) call(audio, "pop");
       syncSound();
     });
-    mus?.addEventListener("click", () => {
+    mus?.addEventListener("click", (e) => {
+      blurIfMouse(e, mus);
       if (audio.musicPlaying) call(audio, "musicOff");
       else {
         if (audio.muted) call(audio, "setMuted", false);

@@ -65,5 +65,55 @@ if (!ui) {
   onEnter();
 }
 
+// Фон: в ролике есть кольцо-«затмение» (центр в 69.5% / 45% кадра 1920x1080, см. tools/motion-bg).
+// Ставим его ровно за гало 3D-острова, чтобы кольца были концентричны на любом экране.
+const VIDEO = { w: 1920, h: 1080, cx: 0.695 * 1920, cy: 0.45 * 1080 };
+function alignBackdrop() {
+  const v = document.getElementById("bg-video");
+  const box = v?.parentElement;
+  const a = safe("scene.anchor", () => scene?.anchor?.());
+  if (!v || !box) return;
+  if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.y)) {
+    v.removeAttribute("style");
+    return;
+  }
+  const W = box.clientWidth || innerWidth;
+  const H = box.clientHeight || innerHeight;
+  const cover = Math.max(W / VIDEO.w, H / VIDEO.h);
+  // минимальный масштаб, при котором кадр закрывает экран и кольцо можно сдвинуть в нужную точку;
+  // сильнее 1.3× не увеличиваем (мыло) — тогда кольцо встанет «как можно ближе»
+  let s = Math.max(
+    cover,
+    a.x / VIDEO.cx,
+    (W - a.x) / (VIDEO.w - VIDEO.cx),
+    a.y / VIDEO.cy,
+    (H - a.y) / (VIDEO.h - VIDEO.cy)
+  );
+  s = Math.min(s, cover * 1.3);
+  const w = VIDEO.w * s;
+  const h = VIDEO.h * s;
+  const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+  const left = clamp(a.x - VIDEO.cx * s, W - w, 0);
+  const top = clamp(a.y - VIDEO.cy * s, H - h, 0);
+  Object.assign(v.style, {
+    inset: "auto",
+    left: `${left.toFixed(1)}px`,
+    top: `${top.toFixed(1)}px`,
+    width: `${w.toFixed(1)}px`,
+    height: `${h.toFixed(1)}px`,
+  });
+}
+if (scene?.anchor) {
+  let q = 0;
+  const queue = () => {
+    cancelAnimationFrame(q);
+    // два кадра: сначала сцена пересчитывает свою раскладку, потом мы
+    q = requestAnimationFrame(() => { q = requestAnimationFrame(alignBackdrop); });
+  };
+  alignBackdrop();
+  addEventListener("resize", queue, { passive: true });
+  addEventListener("orientationchange", queue, { passive: true });
+}
+
 // для отладки из консоли
 window.sempik = { CONFIG, env, audio, ui, scene, cat };

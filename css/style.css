@@ -28,6 +28,21 @@
 
   --gutter: 16px;
   --radius: 28px;
+
+  /* «хром» — круглые стеклянные кнопки поверх всего (звук/музыка справа, игрушки кота слева).
+     cat.js берёт те же переменные, чтобы все кнопки выглядели одним набором */
+  --chrome-size: 44px;
+  --chrome-edge: 16px;
+  --chrome-bg: radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 55%), rgba(18, 10, 32, 0.55);
+  --chrome-bg-on: radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 55%), rgba(64, 14, 52, 0.62);
+  --chrome-border: rgba(255, 255, 255, 0.13);
+  --chrome-border-hi: rgba(255, 140, 198, 0.6);
+  --chrome-blur: blur(14px) saturate(150%);
+  --chrome-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 26px -8px rgba(0, 0, 0, 0.6);
+  --chrome-shadow-hi: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 12px 28px -8px rgba(0, 0, 0, 0.6), 0 0 24px -4px rgba(255, 61, 154, 0.5);
+  --chrome-shadow-on: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 0 14px rgba(255, 61, 154, 0.22), 0 10px 26px -8px rgba(0, 0, 0, 0.6), 0 0 26px -4px rgba(255, 61, 154, 0.55);
+  --tip-bg: rgba(18, 10, 32, 0.86);
+  --tip-border: rgba(255, 140, 198, 0.3);
   color-scheme: dark;
 }
 
@@ -744,8 +759,8 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
    ========================================================================= */
 .controls {
   position: fixed;
-  top: max(16px, env(safe-area-inset-top));
-  right: max(16px, env(safe-area-inset-right));
+  top: max(var(--chrome-edge), env(safe-area-inset-top));
+  right: max(var(--chrome-edge), env(safe-area-inset-right));
   z-index: 80;
   display: flex;
   gap: 10px;
@@ -765,29 +780,53 @@ html.entered .controls {
   position: relative;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: var(--chrome-size);
+  height: var(--chrome-size);
   padding: 0;
   border-radius: 50%;
   cursor: pointer;
   color: var(--ink);
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  background:
-    radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 55%),
-    rgba(18, 10, 32, 0.55);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  backdrop-filter: blur(14px) saturate(150%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 26px -8px rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--chrome-border);
+  background: var(--chrome-bg);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow);
   -webkit-tap-highlight-color: transparent;
   transition: transform 0.3s var(--ease-back), border-color 0.25s ease, box-shadow 0.3s ease, color 0.25s ease;
 }
-.ctl:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 140, 198, 0.55);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 12px 28px -8px rgba(0, 0, 0, 0.6), 0 0 24px -4px rgba(255, 61, 154, 0.5);
+@media (hover: hover) {
+  .ctl:hover {
+    transform: translateY(-2px);
+    border-color: var(--chrome-border-hi);
+    box-shadow: var(--chrome-shadow-hi);
+  }
 }
 .ctl:active { transform: scale(0.92); }
 .ctl:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; border-radius: 50%; }
+/* подсказка под кнопкой — такая же, как у игрушек кота */
+.ctl::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font: 500 11px/1 var(--f-mono);
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  background: var(--tip-bg);
+  border: 1px solid var(--tip-border);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.ctl:not([data-tip])::after { display: none; }
+@media (hover: hover) {
+  .ctl:hover::after { opacity: 1; transform: none; transition-delay: 0.35s; }
+}
+.ctl:focus-visible::after { opacity: 1; transform: none; }
 .ctl .ico {
   width: 20px;
   height: 20px;
@@ -826,8 +865,9 @@ html.entered .controls {
   100% { transform: scaleY(1); }
 }
 .ctl--music[aria-pressed="true"] {
-  border-color: rgba(255, 140, 198, 0.6);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 26px -8px rgba(0, 0, 0, 0.6), 0 0 26px -4px rgba(255, 61, 154, 0.55);
+  border-color: var(--chrome-border-hi);
+  background: var(--chrome-bg-on);
+  box-shadow: var(--chrome-shadow-on);
 }
 .ctl--music[aria-pressed="true"] .ico--note { display: none; }
 .ctl--music[aria-pressed="true"] .eq { display: flex; }
@@ -1249,7 +1289,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   #bg-video { object-position: 68% 50%; }
   .ui {
     display: block;
-    padding: 40vh var(--gutter) calc(92px + env(safe-area-inset-bottom));
+    padding: 40vh var(--gutter) calc(64px + env(safe-area-inset-bottom));
     padding-top: 40svh;
     padding-left: max(var(--gutter), env(safe-area-inset-left));
     padding-right: max(var(--gutter), env(safe-area-inset-right));
@@ -1271,7 +1311,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .name { font-size: clamp(32px, 9.4vw, 44px); }
   .about { font-size: 14.5px; }
   .link { min-height: 60px; }
-  #toast { bottom: calc(78px + env(safe-area-inset-bottom)); }
+  #toast { bottom: calc(22px + env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 374.98px) {
