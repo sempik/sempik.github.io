@@ -118,10 +118,25 @@ function makeKit(ctx, nodes) {
   };
 }
 
+// таблица cos/sin на один период: ДПФ ниже берёт значения по индексу (n·k mod M) вместо
+// ~100 тыс. вызовов Math.cos/sin при каждом старте
+const DFT_M = 1024;
+let dftTab = null;
+function dftTable() {
+  if (!dftTab) {
+    const c = new Float64Array(DFT_M);
+    const s = new Float64Array(DFT_M);
+    for (let k = 0; k < DFT_M; k++) { c[k] = Math.cos((TAU * k) / DFT_M); s[k] = Math.sin((TAU * k) / DFT_M); }
+    dftTab = { c, s };
+  }
+  return dftTab;
+}
+
 // периодическая волна из произвольной формы shape(phase 0..1); DC возвращается отдельно (mean),
 // потому что PeriodicWave игнорирует нулевую гармонику
 function waveFromShape(ctx, shape, H) {
-  const M = 1024;
+  const M = DFT_M;
+  const { c: COS, s: SIN } = dftTable();
   const s = new Float32Array(M);
   let mean = 0;
   for (let k = 0; k < M; k++) { s[k] = shape(k / M); mean += s[k]; }
@@ -130,10 +145,9 @@ function waveFromShape(ctx, shape, H) {
   const imag = new Float32Array(H + 1);
   for (let n = 1; n <= H; n++) {
     let a = 0, b = 0;
-    for (let k = 0; k < M; k++) {
-      const ph = (TAU * n * k) / M;
-      a += s[k] * Math.cos(ph);
-      b += s[k] * Math.sin(ph);
+    for (let k = 0, j = 0; k < M; k++, j = (j + n) & (M - 1)) {
+      a += s[k] * COS[j];
+      b += s[k] * SIN[j];
     }
     real[n] = (2 * a) / M;
     imag[n] = (2 * b) / M;
@@ -165,29 +179,54 @@ function makeNoise(ctx, seconds) {
   return buf;
 }
 
-// Алгоритмическая реверберация: стерео-шум с экспоненциальным спадом (~2.5 c), хвост темнеет со временем
-function makeImpulse(ctx, seconds = 2.5) {
+// Алгоритмическая реверберация: стерео-шум с экспоненциальным спадом (~2.5 c), хвост темнеет со временем.
+// Спад — умножением на постоянный множитель (без Math.exp на сэмпл), коэффициент фильтра и
+// компенсация громкости обновляются раз в 32 сэмпла (шаг ~0.0002 — на слух неотличимо).
+// Считается порциями: step(n) досчитывает до n сэмплов и возвращает true, когда буфер готов —
+// так генерацию можно размазать по простоям главного потока.
+function impulseMaker(ctx, seconds = 2.5) {
   const sr = ctx.sampleRate;
   const len = Math.max(2, Math.floor(sr * seconds));
   const buf = ctx.createBuffer(2, len, sr);
   const pre = Math.floor(sr * 0.012);
   const t60 = seconds * 0.95;
   const fadeLen = sr * 0.12;
-  for (let c = 0; c < 2; c++) {
-    const d = buf.getChannelData(c);
-    let lp = 0;
-    for (let i = pre; i < len; i++) {
-      const t = (i - pre) / sr;
-      const k = 0.9 - 0.72 * Math.min(1, t / seconds); // коэффициент one-pole LP: светлое начало → тёмный хвост
-      lp += k * (Math.random() * 2 - 1 - lp);
-      let env = Math.exp((-6.9 * t) / t60) * Math.sqrt((2 - k) / k);
-      if (t < 0.025) env *= 0.35 + (0.65 * t) / 0.025; // мягкая атака
-      const left = len - i;
-      if (left < fadeLen) env *= left / fadeLen;
-      d[i] = lp * env;
-    }
-  }
-  return buf;
+  const fadeFrom = len - fadeLen;
+  const atkN = 0.025 * sr;
+  const decay = Math.exp(-6.9 / (t60 * sr));
+  let c = 0, d = buf.getChannelData(0);
+  let i = pre, j = 0, lp = 0, ex = 1, k = 0.9, comp = 1;
+  return {
+    buffer: buf,
+    step(n) {
+      while (c < 2 && n > 0) {
+        const stop = Math.min(len, i + n);
+        n -= stop - i;
+        for (; i < stop; i++, j++) {
+          if ((j & 31) === 0) {
+            k = 0.9 - 0.72 * Math.min(1, j / sr / seconds); // коэффициент one-pole LP: светлое начало → тёмный хвост
+            comp = Math.sqrt((2 - k) / k);
+          }
+          lp += k * (Math.random() * 2 - 1 - lp);
+          let env = ex * comp;
+          ex *= decay;
+          if (j < atkN) env *= 0.35 + (0.65 * j) / atkN; // мягкая атака
+          if (i > fadeFrom) env *= (len - i) / fadeLen;
+          d[i] = lp * env;
+        }
+        if (i >= len && ++c < 2) {
+          d = buf.getChannelData(c);
+          i = pre; j = 0; lp = 0; ex = 1;
+        }
+      }
+      return c >= 2;
+    },
+  };
+}
+function makeImpulse(ctx, seconds = 2.5) {
+  const m = impulseMaker(ctx, seconds);
+  m.step(Infinity);
+  return m.buffer;
 }
 
 const driveCache = new Map();
@@ -208,7 +247,10 @@ function driveCurve(k) {
 // голоса → sfx ┐
 // музыка ──────┼→ mix → compressor → limiter → trim → out(mute) → destination
 // reverb send → verbIn → HP → convolver → LP ┘
-function buildRig(ctx, destination) {
+// lazyVerb: импульс реверба (самая дорогая часть, десятки мс) не считается сразу — его досчитывает
+// ensureVerb(rig), когда главный поток свободен или когда звуку реверб действительно нужен.
+// Пока буфера нет, ConvolverNode просто молчит.
+function buildRig(ctx, destination, { lazyVerb = false } = {}) {
   const dest = destination || ctx.destination;
   const out = ctx.createGain();
   const comp = ctx.createDynamicsCompressor();
@@ -243,7 +285,6 @@ function buildRig(ctx, destination) {
   verbHP.frequency.value = 220;
   const verb = ctx.createConvolver();
   verb.normalize = true;
-  verb.buffer = makeImpulse(ctx, 2.5);
   const verbLP = ctx.createBiquadFilter();
   verbLP.type = "lowpass";
   verbLP.frequency.value = 6500;
@@ -256,24 +297,60 @@ function buildRig(ctx, destination) {
   verbOut.connect(mix);
 
   const bump = (p, a, b) => (p > a && p < b ? Math.pow(Math.sin((Math.PI * (p - a)) / (b - a)), 0.6) : 0);
-  return {
+  const rig = {
     ctx,
     out,
     mix,
     sfx,
     verbIn,
+    verb,
+    verbReady: false,
     noise: makeNoise(ctx, 4),
-    waves: {
-      voice: voiceWave(ctx),
-      // один «удар» мурчания: резкий подъём, мягкий спад, тишина
-      purrPulse: waveFromShape(ctx, (p) => (p < 0.6 ? Math.pow(Math.sin((Math.PI * p) / 0.6), 1.6) : 0), 32),
-      // дыхание: выдох (громче) — пауза — вдох (тише) — пауза
-      purrBreath: waveFromShape(ctx, (p) => 0.1 + 0.9 * bump(p, 0, 0.52) + 0.6 * bump(p, 0.58, 0.96), 24),
-    },
+    waves: { voice: voiceWave(ctx) },
     ks: new Map(),
     active: 0,
     meows: 0,
   };
+  // волны мурчания считаются при первом обращении (или заранее в простое) — не в момент входа
+  const lazyWave = (name, make) => {
+    Object.defineProperty(rig.waves, name, {
+      configurable: true,
+      enumerable: true,
+      get() {
+        const v = make();
+        Object.defineProperty(rig.waves, name, { value: v, enumerable: true });
+        return v;
+      },
+    });
+  };
+  // один «удар» мурчания: резкий подъём, мягкий спад, тишина
+  lazyWave("purrPulse", () => waveFromShape(ctx, (p) => (p < 0.6 ? Math.pow(Math.sin((Math.PI * p) / 0.6), 1.6) : 0), 32));
+  // дыхание: выдох (громче) — пауза — вдох (тише) — пауза
+  lazyWave("purrBreath", () => waveFromShape(ctx, (p) => 0.1 + 0.9 * bump(p, 0, 0.52) + 0.6 * bump(p, 0.58, 0.96), 24));
+  if (!lazyVerb) ensureVerb(rig);
+  return rig;
+}
+
+// досчитать до n сэмплов импульса; true — импульс посчитан (осталось отдать его свёртке)
+function verbStep(rig, n) {
+  if (rig.verbReady) return true;
+  try {
+    if (!rig.verbGen) rig.verbGen = impulseMaker(rig.ctx, 2.5);
+    return rig.verbGen.step(n);
+  } catch (_) {
+    rig.verbReady = true; // не вышло — живём без реверба
+    rig.verbGen = null;
+    return true;
+  }
+}
+// реверб нужен прямо сейчас: досчитываем остаток и отдаём буфер ConvolverNode
+function ensureVerb(rig) {
+  if (rig.verbReady) return;
+  verbStep(rig, Infinity);
+  if (rig.verbReady) return;
+  rig.verbReady = true;
+  try { rig.verb.buffer = rig.verbGen.buffer; } catch (_) { /* без реверба тоже звучит */ }
+  rig.verbGen = null;
 }
 
 // ---------------------------------------------------------------- МЯУ
@@ -567,7 +644,7 @@ function chimeBar(rig, t, f, v, p) {
   let last = null;
   // [отношение частот свободной трубки, амплитуда, время спада]
   for (const [ratio, a, tau] of [[1, 1, 0.55], [2.756, 0.3, 0.22], [5.404, 0.1, 0.08]]) {
-    const o = K.osc(ratio === 1 ? "sine" : "sine", f * ratio * rand(0.998, 1.002));
+    const o = K.osc("sine", f * ratio * rand(0.998, 1.002));
     const g = K.gain(0);
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(v * a, t + 0.0025);
@@ -734,7 +811,7 @@ function makeCrackle(ctx) {
 // баланс дорожек музыки (stems можно переопределить в тестах)
 const STEMS = { pad: 1, bass: 1, pluck: 1, bell: 1, wind: 1, vinyl: 1 };
 
-function createMusic(rig, stems) {
+function createMusic(rig, stems, { lazy = false } = {}) {
   const ctx = rig.ctx;
   const st = Object.assign({}, STEMS, stems);
   const keep = []; // постоянные узлы (живут всё время звучания)
@@ -785,18 +862,25 @@ function createMusic(rig, stems) {
   const windStem = K.gain(st.wind);
   wind.connect(wbp).connect(wg).connect(windStem).connect(bus);
 
-  // винил
-  if (!rig.crackle) rig.crackle = makeCrackle(ctx);
-  const crk = K.add(ctx.createBufferSource());
-  crk.buffer = rig.crackle;
-  crk.loop = true;
-  const crkHP = K.filter("highpass", 1400, 0.7);
-  const crkG = K.gain(0.15 * st.vinyl);
-  crk.connect(crkHP).connect(crkG).connect(bus);
+  const persistent = [wow, wind, wl1, wl2];
 
-  const persistent = [wow, wind, wl1, wl2, crk];
+  // винил: 7-секундный буфер треска считается один раз на контекст. В lazy-режиме (сайт) его
+  // подключает vinyl() из простоя главного потока — музыка всё равно 5 с плавно нарастает.
+  let crk = null;
+  function vinyl() {
+    if (crk || !started || stopped) return;
+    if (!rig.crackle) rig.crackle = makeCrackle(ctx);
+    crk = K.add(ctx.createBufferSource());
+    crk.buffer = rig.crackle;
+    crk.loop = true;
+    const crkHP = K.filter("highpass", 1400, 0.7);
+    const crkG = K.gain(0.15 * st.vinyl);
+    crk.connect(crkHP).connect(crkG).connect(bus);
+    crk.start(Math.max(t0, ctx.currentTime), rand(0, 6));
+    persistent.push(crk);
+  }
 
-  let started = false, stopped = false;
+  let started = false, stopped = false, t0 = 0;
   let nextChord = 0, chordN = 0, prog = PROGS[0], D = 10;
   let nextNote = 0, nextBell = 0, phraseLeft = 0, idx = 5;
   const chordLine = [];
@@ -945,18 +1029,21 @@ function createMusic(rig, stems) {
     start(at) {
       if (started) return;
       started = true;
-      const t0 = at;
+      t0 = at;
       for (const f of faders) {
         f.gain.setValueAtTime(0, t0);
         f.gain.linearRampToValueAtTime(LEVEL.music, t0 + 5);
       }
       wind.start(t0, rand(0, 3));
-      crk.start(t0, rand(0, 6));
-      for (const s of persistent) if (s !== wind && s !== crk) s.start(t0);
+      for (const s of persistent) if (s !== wind) s.start(t0);
+      if (!lazy || rig.crackle) vinyl();
       nextChord = t0;
       nextNote = t0 + rand(2.2, 3.2);
       nextBell = t0 + rand(5, 9);
     },
+    vinyl,
+    // какие ноты кото понадобятся (для предрасчёта буферов в простое)
+    notes: PENTA,
     // планирует всё, что начинается до момента `until`
     pump(until) {
       if (!started || stopped) return;
@@ -1014,16 +1101,36 @@ function writeMuted(m) {
   try { localStorage.setItem(MUTE_KEY, m ? "1" : "0"); } catch (_) { /* приватный режим */ }
 }
 
+// Контекст живёт не всё время: после IDLE_MS тишины (нет голосов, мурчания и музыки) он засыпает
+// (suspend) — аудиопоток и устройство вывода перестают молотить впустую. Следующий звук будит его
+// (resume) и играет, как только контекст реально пошёл. Звуки, не дождавшиеся пробуждения за
+// STALE_MS, выбрасываются — чтобы после звонка на iOS не высыпалась пачка старых «тиков».
+const IDLE_MS = 20000;
+const STALE_MS = 450;
+
+const ric =
+  typeof requestIdleCallback === "function"
+    ? (fn, timeout) => requestIdleCallback(fn, { timeout })
+    : (fn) => setTimeout(() => fn(null), 60);
+
+const perfNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
 export function createAudio({ config, env } = {}) {
   let ctx = null;
   let rig = null;
   let muted = readMuted();
   let purr = null;
+  let purrWanted = false;
   let purrTimer = 0;
   let music = null;
   let musicWanted = false;
   let musicTimer = 0;
   let suspendTimer = 0;
+  let idleTimer = 0;
+  let waking = false;
+  let sleeping = false;
+  let wakeAt = 0;
+  const pending = []; // [{ at, fn }] — ждут пробуждения контекста
   const lastAt = Object.create(null);
 
   const hidden = () => typeof document !== "undefined" && document.hidden;
@@ -1034,48 +1141,190 @@ export function createAudio({ config, env } = {}) {
     try { return fn(...args); } catch (e) { return undefined; }
   };
 
+  // ---- фоновые задачи: тяжёлые буферы считаем кусками, когда главный поток простаивает
+  const idleQ = [];
+  let idleArmed = false;
+  // big — неделимая задача на десятки мс (передача импульса в свёртку): её берём только первой
+  // в вызове и только при длинном простое (≥ 20 мс); если такого простоя всё нет — после
+  // нескольких попыток выполняем как есть, чтобы реверб не откладывался бесконечно.
+  function later(fn, big) {
+    idleQ.push({ fn, big: !!big, tries: 0 });
+    armIdle();
+  }
+  // requestIdleCallback на перегруженной странице может не приходить подолгу (даже с timeout) —
+  // страхуемся обычным таймером: что придёт первым, то и выполнит очередь
+  let idleToken = 0;
+  function armIdle() {
+    if (idleArmed || !idleQ.length) return;
+    idleArmed = true;
+    const tok = ++idleToken;
+    ric((dl) => { if (tok === idleToken && idleArmed) runIdle(dl); }, 1000);
+    setTimeout(() => { if (tok === idleToken && idleArmed) runIdle(null); }, 2000);
+  }
+  function runIdle(dl) {
+    idleArmed = false;
+    const t0 = perfNow();
+    const slack = dl && !dl.didTimeout;
+    // мелкие задачи (~0.2–1.5 мс) — пока до следующего кадра остаётся запас ≥ 2 мс
+    // (без deadline или по таймауту — не дольше ~4 мс за вызов); хотя бы одна за вызов
+    let ran = 0;
+    while (idleQ.length) {
+      const task = idleQ[0];
+      if (task.big) {
+        if (ran) break;
+        if (slack && dl.timeRemaining() < 20 && ++task.tries < 6) break;
+      }
+      idleQ.shift();
+      try { task.fn(); } catch (_) { /* задача не обязательна */ }
+      ran++;
+      if (task.big || (slack ? dl.timeRemaining() < 2 : perfNow() - t0 >= 4)) break;
+    }
+    armIdle();
+  }
+  // импульс реверба: порциями по 8192 сэмпла (~0.2–1 мс), затем отдельной big-задачей — передача в свёртку
+  let verbQueued = false;
+  let verbDelay = 0;
+  function verbLater(delay = 0) {
+    if (!rig || rig.verbReady || verbQueued) return;
+    verbQueued = true;
+    const chunk = () => {
+      if (!rig || rig.verbReady) { verbQueued = false; return; }
+      if (verbStep(rig, 8192)) later(() => { verbQueued = false; if (rig) ensureVerb(rig); }, true);
+      else later(chunk);
+    };
+    if (delay > 0) verbDelay = setTimeout(() => later(chunk), delay);
+    else later(chunk);
+  }
+
+  // ---- сон / пробуждение контекста
+  // sleeping: мы уже попросили suspend(), но ctx.state ещё «running» (меняется асинхронно).
+  // Звук, запущенный в это окно, замёрз бы вместе с контекстом и высыпался бы при следующем
+  // пробуждении — поэтому такой звук идёт через wake(), как при спящем контексте.
+  function suspend() {
+    if (ctx && ctx.state === "running" && !sleeping) {
+      try {
+        const p = ctx.suspend();
+        sleeping = true;
+        if (p && p.catch) p.catch(() => { sleeping = false; });
+      } catch (_) { sleeping = false; /* очень старый webkit */ }
+    }
+  }
+  const awake = () => ctx.state === "running" && !sleeping;
+  function flush() {
+    waking = false;
+    const q = pending.splice(0);
+    if (!ctx || !awake()) return;
+    // пока resume() шёл, вкладку скрыли или звук выключили — не оставляем контекст молотить впустую
+    if (hidden()) { suspend(); return; }
+    if (muted) { scheduleSuspend(); return; }
+    if (!rig) return;
+    const t = perfNow();
+    for (const job of q) {
+      if (!job.sticky && t - job.at > STALE_MS) continue;
+      try { job.fn(); } catch (_) { /* ignore */ }
+    }
+    touch();
+  }
+  function wake(force) {
+    if (!ctx || ctx.state === "closed") return;
+    if (awake()) { flush(); return; }
+    // resume() на iOS во время «прерывания» может висеть долго — через 1.5 с разрешаем новую попытку.
+    // В жесте пользователя (force) пробуем всегда: на iOS снять прерывание можно только так.
+    if (waking && !force && perfNow() - wakeAt < 1500) return;
+    waking = true;
+    wakeAt = perfNow();
+    let p = null;
+    try { p = ctx.resume(); } catch (_) { p = null; }
+    // resume() встаёт в очередь после suspend(), так что после его resolve контекст точно идёт
+    const ok = () => { sleeping = false; flush(); };
+    if (p && p.then) {
+      p.then(ok, () => { waking = false; pending.length = 0; });
+    } else {
+      ok();
+    }
+  }
+  // выполнить fn, когда контекст работает (сразу или после пробуждения).
+  // sticky — не выбрасывать по STALE_MS (мурчание: кота гладят долго, его нельзя потерять из-за
+  // медленного пробуждения; от «устаревания» его защищает флаг purrWanted)
+  function run(fn, sticky) {
+    if (awake()) {
+      fn();
+      touch();
+      return;
+    }
+    if (pending.length < 8) pending.push({ at: perfNow(), fn, sticky: !!sticky });
+    wake();
+  }
+  // отметка активности: через IDLE_MS тишины контекст уснёт
+  function touch() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(checkIdle, IDLE_MS);
+  }
+  function checkIdle() {
+    idleTimer = 0;
+    if (!ctx || muted) return; // при выключенном звуке контекст усыпляет setMuted
+    if (music || purr || pending.length || (rig && rig.active > 0)) { touch(); return; }
+    suspend();
+  }
+
   function play(name, minGapMs, fn) {
     if (!can()) return;
-    const t = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const t = perfNow();
     if (t - (lastAt[name] || -1e9) < minGapMs) return;
     if (rig.active > 24) return; // защита от лавины звуков
     lastAt[name] = t;
-    fn(rig, now());
-  }
-
-  function resume() {
-    if (ctx && ctx.state !== "running" && ctx.state !== "closed") {
-      const p = ctx.resume();
-      if (p && p.catch) p.catch(() => {});
-    }
-  }
-  function suspend() {
-    if (ctx && ctx.state === "running") {
-      const p = ctx.suspend();
-      if (p && p.catch) p.catch(() => {});
-    }
+    run(() => fn(rig, now()));
   }
 
   function onVisibility() {
     if (!ctx) return;
     if (hidden()) {
       stopPurr();
+      pending.length = 0;
       suspend();
-    } else if (!muted) {
-      resume();
+    } else if (!muted && music) {
+      wake(); // без музыки будить незачем — разбудит первый же звук
     }
   }
-  function onPointer() {
-    // iOS может «прервать» контекст (звонок, блокировка) — будим при следующем касании
-    if (ctx && !muted && !hidden() && ctx.state !== "running") resume();
+  function onGesture() {
+    // iOS может «прервать» контекст (звонок, блокировка) — снять это можно только в жесте.
+    // Заснувший по тишине контекст тоже будим заранее: за кликом/касанием почти всегда идёт звук
+    // (поп, мяу, мурчание) — так он не опоздает на время resume(), а на iOS resume() внутри
+    // жеста надёжнее всего. Пробуждение дешёвое, через IDLE_MS тишины контекст снова уснёт.
+    if (!ctx || muted || hidden() || awake() || ctx.state === "closed") return;
+    wake(true);
+  }
+
+  function teardown() {
+    // контекст закрыт браузером/системой — начинаем с чистого листа при следующем unlock
+    clearInterval(musicTimer);
+    musicTimer = 0;
+    clearTimeout(purrTimer);
+    clearTimeout(idleTimer);
+    clearTimeout(suspendTimer);
+    clearTimeout(verbDelay);
+    verbQueued = false;
+    music = null;
+    purr = null;
+    pending.length = 0;
+    idleQ.length = 0;
+    waking = false;
+    sleeping = false;
+    document.removeEventListener("visibilitychange", onVisibility);
+    for (const type of ["pointerdown", "touchend", "keydown"]) window.removeEventListener(type, onGesture, true);
+    ctx = null;
+    rig = null;
   }
 
   function unlock() {
+    if (ctx && ctx.state === "closed") teardown();
     if (!ctx) {
       const AC = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
       if (!AC) return;
-      try { ctx = new AC({ latencyHint: "interactive" }); } catch (_) { ctx = new AC(); }
-      try { rig = buildRig(ctx); }
+      // «balanced»: буфер вывода чуть крупнее (≈+10 мс) — реже просыпается аудиопоток и меньше шанс
+      // треска на слабом железе, пока главный поток занят 3D. Для звуков интерфейса разницы не слышно.
+      try { ctx = new AC({ latencyHint: "balanced" }); } catch (_) { ctx = new AC(); }
+      try { rig = buildRig(ctx, null, { lazyVerb: true }); }
       catch (e) {
         // экзотический браузер без нужных узлов — остаёмся тихими, но не ломаемся
         try { ctx.close(); } catch (_) { /* ignore */ }
@@ -1094,11 +1343,19 @@ export function createAudio({ config, env } = {}) {
         b.start(0);
       } catch (_) { /* ignore */ }
       document.addEventListener("visibilitychange", onVisibility);
-      window.addEventListener("pointerdown", onPointer, { passive: true, capture: true });
-      window.addEventListener("keydown", onPointer, { passive: true, capture: true });
+      for (const type of ["pointerdown", "touchend", "keydown"]) {
+        window.addEventListener(type, onGesture, { passive: true, capture: true });
+      }
+      // реверб досчитаем, когда отыграет анимация входа (звуки в первые секунды почти «сухие»
+      // по природе: тик/поп/приземление; мяу до этого звучит чуть суше, колокольчики при
+      // необходимости достроят его сами)
+      if (!muted) verbLater(1500);
+      later(() => { if (rig) void (rig.waves.purrPulse && rig.waves.purrBreath); });
     }
-    resume(); // будим даже если звук выключен — это наш шанс сделать это внутри жеста
+    // будим даже если звук выключен — это наш шанс сделать это внутри жеста (iOS)
+    wake(true);
     if (muted) scheduleSuspend();
+    else touch();
     if (musicWanted && !music) startMusic();
   }
 
@@ -1119,10 +1376,14 @@ export function createAudio({ config, env } = {}) {
       g.setTargetAtTime(m ? 0 : 1, t, m ? 0.06 : 0.09);
       if (m) {
         stopPurr();
+        pending.length = 0;
+        clearTimeout(idleTimer);
         scheduleSuspend();
       } else {
         clearTimeout(suspendTimer);
-        if (!hidden()) resume();
+        verbLater();
+        // включают кнопкой — это жест: resume() пробуем сразу, даже если недавно была попытка без жеста
+        if (!hidden()) { wake(true); touch(); }
       }
     }
     try {
@@ -1132,25 +1393,37 @@ export function createAudio({ config, env } = {}) {
 
   function startPurr() {
     if (purr || !can()) return;
-    purr = purrVoice(rig, now());
+    purrWanted = true;
     clearTimeout(purrTimer);
     purrTimer = setTimeout(stopPurr, 60000); // предохранитель: вечного мурчания не бывает
+    run(() => {
+      if (purrWanted && !purr && can()) purr = purrVoice(rig, now());
+    }, true);
   }
   function stopPurr() {
+    purrWanted = false;
     clearTimeout(purrTimer);
     if (!purr) return;
     const p = purr;
     purr = null;
     try { p.stop(ctx.currentTime); } catch (_) { /* ignore */ }
+    touch();
   }
 
+  function pumpIt() {
+    if (music && ctx && awake()) music.pump(ctx.currentTime + 1.2);
+  }
   function startMusic() {
     if (music || !rig) return;
-    music = createMusic(rig);
+    music = createMusic(rig, undefined, { lazy: true });
     music.start(ctx.currentTime + 0.1);
-    const pumpIt = () => {
-      if (music && ctx.state === "running") music.pump(ctx.currentTime + 1.2);
-    };
+    // реверб, треск винила и буферы кото — в простое: музыка 5 с плавно нарастает,
+    // а первая нота кото звучит не раньше чем через ~2 с
+    const m = music;
+    verbLater();
+    later(() => { if (music === m) m.vinyl(); });
+    for (const n of m.notes) later(() => { if (music === m) ksBuffer(rig, n); });
+    if (!muted && !hidden()) wake();
     pumpIt();
     clearInterval(musicTimer);
     musicTimer = setInterval(() => {
@@ -1160,7 +1433,11 @@ export function createAudio({ config, env } = {}) {
   function stopMusic() {
     clearInterval(musicTimer);
     musicTimer = 0;
-    if (music) { music.stop(); music = null; }
+    if (music) {
+      try { music.stop(); } catch (_) { /* ignore */ }
+      music = null;
+      if (ctx && !muted) touch();
+    }
   }
 
   function musicOn() {
@@ -1172,11 +1449,15 @@ export function createAudio({ config, env } = {}) {
     stopMusic();
   }
 
-  return {
+  const api = {
     unlock: guard(unlock),
     meow: guard((kind = "short") =>
       play("meow", 90, (r, t) => {
         if (r.meows >= 3) return;
+        // реверба в мяу немного (посыл 0.14) — не достраиваем его синхронно: приветственное мяу
+        // кота звучит через ~1.3 с после входа, ровно посреди анимации появления, и каждый раз
+        // давало бы длинную задачу ~20–30 мс. Пока импульса нет, мяу просто чуть «суше».
+        if (!r.verbReady) verbLater();
         meowVoice(r, t, hasKind(kind) ? kind : "short");
       })
     ),
@@ -1184,7 +1465,12 @@ export function createAudio({ config, env } = {}) {
     stopPurr: guard(stopPurr),
     pop: guard(() => play("pop", 45, popVoice)),
     tick: guard(() => play("tick", 40, tickVoice)),
-    chime: guard(() => play("chime", 250, chimeVoice)),
+    chime: guard(() =>
+      play("chime", 250, (r, t) => {
+        ensureVerb(r); // колокольчики наполовину из реверба
+        chimeVoice(r, t);
+      })
+    ),
     thud: guard(() => play("thud", 80, thudVoice)),
     setMuted: guard(setMuted),
     get muted() { return muted; },
@@ -1193,12 +1479,20 @@ export function createAudio({ config, env } = {}) {
     get musicPlaying() { return musicWanted; },
     // для отладки из консоли: window.sempik.audio.debug
     get debug() {
-      return { state: ctx ? ctx.state : "locked", voices: rig ? rig.active : 0, purring: !!purr, music: !!music };
+      return {
+        state: ctx ? ctx.state : "locked",
+        voices: rig ? rig.active : 0,
+        purring: !!purr,
+        music: !!music,
+        reverb: !!(rig && rig.verbReady),
+        koto: rig ? rig.ks.size : 0,
+      };
     },
   };
+  return api;
 }
 
 // Внутренности для офлайн-тестов (рендер в OfflineAudioContext). Сайт это не использует.
 export const __synth = {
-  buildRig, meowVoice, purrVoice, popVoice, tickVoice, chimeVoice, thudVoice, createMusic, ksBuffer, LEVEL,
+  buildRig, ensureVerb, meowVoice, purrVoice, popVoice, tickVoice, chimeVoice, thudVoice, createMusic, ksBuffer, LEVEL,
 };

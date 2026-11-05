@@ -1,6 +1,8 @@
 // Кекс — интерактивный котик для sempik.github.io
 // ---------------------------------------------------------------------------
-// Рисуется процедурно (пути + градиенты, без спрайтов) на <canvas id="cat-layer">.
+// Рисуется процедурно (пути + градиенты) на <canvas id="cat-layer">; Z z z и пузырь реплики —
+// заранее отрисованные спрайты. Каждый кадр стирается и перерисовывается только «грязный»
+// прямоугольник вокруг кота/игрушек/частиц, частота — 60 (кап для 120/144 Гц), в покое 30/20.
 // Канвас всегда pointer-events: none — ввод ловим сами на window (capture) и забираем
 // только то, что попало в кота или в клубок; остальная страница работает как обычно.
 //
@@ -39,6 +41,8 @@ const LEG_L = 23, LEG_AIR = 19;
 const WALK_OFF = [0.25, 0, 0.75, 0.5];
 const RUN_OFF = [0.52, 0, 0.6, 0.08];
 const OL = 1.3; // половина толщины контура
+// габарит куклы в локальных единицах (для грязного прямоугольника; с запасом)
+const CAT_BX0 = -48, CAT_BX1 = 86, CAT_BY0 = -108, CAT_BY1 = 12;
 const TN = 11, TSEG = 4.5; // хвост: точек и длина сегмента
 const G = 2600; // гравитация, px/s²
 const STEP = 1 / 120;
@@ -50,10 +54,11 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   if (!ctx) return noop;
 
   // ---------------------------------------------------------------- конфиг
-  const theme = Object.assign(
-    { pink: "#ff8cc6", hot: "#ff3d9a", violet: "#9b7bff", deep: "#2a1446", ink: "#f6f0ff" },
-    config?.theme || {}
-  );
+  // Сайт монохромный («ночная сакура при луне»): кот, частицы, пузырь и игрушки — строго ч/б.
+  // Цвет возвращается только в пасхалке-вечеринке (html.party / событие sempik:party).
+  // Палитру берём фиксированную (как в config.theme), чтобы кот оставался ч/б при любом конфиге.
+  const MONO = { pink: "#d4d4d4", hot: "#ffffff", deep: "#1a1a1a" };
+  const PARTY = { pink: "#ff8cc6", hot: "#ff3d9a", deep: "#2a1446" };
   const catCfg = config?.cat || {};
   const NAME = catCfg.name || "Кекс";
   const DEF_PH = {
@@ -88,27 +93,34 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   };
 
   // ---------------------------------------------------------------- палитра кота
+  // серебристый «колор-пойнт»: белая шерсть, графитовый контур, серые кончики ушей и хвоста
   const C = {
-    line: "#3b2254",
-    fur: "#fffafd",
-    furShade: "#eadff4",
-    furFar: "#d9cbe8",
-    furFarShade: "#c4b2da",
-    point: "#b39edb",
-    pointDeep: "#9580c6",
-    innerEar: "#ffa6cf",
-    nose: "#ff74b0",
-    eyeTop: "#120a20",
-    eyeBot: "#6446c8",
-    pupil: "#05020b",
-    mouth: "#5b1134",
-    tongue: "#ff86b0",
-    collar: theme.hot,
-    charm: "#ffd6ea",
-    charmCore: "#ff4f9f",
-    whisker: "rgba(240,232,255,0.8)",
-    bean: "#ff9cc8",
+    line: "#222222",
+    fur: "#fafafa",
+    furShade: "#dedede",
+    furFar: "#c9c9c9",
+    point: "#8c8c8c",
+    pointDeep: "#6f6f6f",
+    innerEar: "#c4c4c4",
+    innerEarFar: "#a9a9a9",
+    nose: "#5c5c5c",
+    eyeTop: "#0a0a0a",
+    eyeMid: "#262626",
+    eyeBot: "#7a7a7a",
+    pupil: "#000000",
+    mouth: "#2b2b2b",
+    tongue: "#a8a8a8",
+    collar: "#1c1c1c",
+    collarHi: "#6a6a6a",
+    charm: "#f4f4f4",
+    charmCore: "#8a8a8a",
+    whisker: "rgba(245,245,245,0.8)",
+    bean: "#9a9a9a",
+    stripe: "rgba(105,105,105,0.8)",
+    toe: "rgba(34,34,34,0.35)",
   };
+  // в вечеринку — исходные розовые детали
+  const CP = { innerEar: "#ffa6cf", innerEarFar: "#e88cbc", nose: "#ff74b0", tongue: "#ff86b0", charm: "#ffd6ea", charmCore: "#ff4f9f", bean: "#ff9cc8", blush: "#ff8ac0" };
   const FONT_BUBBLE = '700 13px Manrope, "Segoe UI", system-ui, sans-serif';
   const FONT_Z = [
     '800 12px Unbounded, Manrope, system-ui, sans-serif',
@@ -130,31 +142,43 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     return g;
   };
   const gBody = mkLin(0, -44, 0, -11, [[0, "#ffffff"], [0.55, C.fur], [1, C.furShade]]);
-  const gHead = mkLin(0, -19, 0, 17, [[0, "#ffffff"], [0.6, C.fur], [1, "#efe4f7"]]);
+  const gHead = mkLin(0, -19, 0, 17, [[0, "#ffffff"], [0.6, C.fur], [1, "#e4e4e4"]]);
   const gHaunch = mkLin(0, -20, 0, 0, [[0, "#ffffff"], [1, C.furShade]]);
   const gEarNear = mkLin(0, 0, 0, -16, [[0, C.fur], [0.45, C.fur], [1, C.point]]);
   const gEarFar = mkLin(0, 0, 0, -16, [[0, C.furFar], [0.4, C.furFar], [1, C.pointDeep]]);
-  const gEye = mkLin(0, -6.5, 0, 6.5, [[0, C.eyeTop], [0.55, "#2a1650"], [1, C.eyeBot]]);
+  const gEye = mkLin(0, -6.5, 0, 6.5, [[0, C.eyeTop], [0.55, C.eyeMid], [1, C.eyeBot]]);
+  // лазер: ч/б — белая «лунная» точка; в вечеринку — снова красная
   const gLaser = mkRad(0, 0, 0, 0, 0, 20, [
+    [0, "rgba(255,255,255,1)"],
+    [0.12, "rgba(255,255,255,0.9)"],
+    [0.3, "rgba(225,225,225,0.4)"],
+    [1, "rgba(255,255,255,0)"],
+  ]);
+  const gLaserParty = mkRad(0, 0, 0, 0, 0, 20, [
     [0, "rgba(255,255,255,1)"],
     [0.1, "rgba(255,70,70,1)"],
     [0.28, "rgba(255,20,50,0.55)"],
     [1, "rgba(255,0,40,0)"],
   ]);
-  const gYarn = mkRad(-0.35, -0.4, 0.05, 0, 0, 1, [[0, "#ffc4e1"], [0.55, "#ff86bf"], [1, "#d4478f"]]);
-  const gShadow = mkRad(0, 0, 0, 0, 0, 1, [[0, "rgba(4,2,10,0.55)"], [1, "rgba(4,2,10,0)"]]);
-  const gGlow = mkRad(0, 0, 0, 0, 0, 1, [[0, "rgba(255,140,198,0.16)"], [1, "rgba(255,140,198,0)"]]);
-  const gBubble = mkLin(0, 0, 0, 52, [[0, "#ffffff"], [1, "#ffe1f0"]]);
-  // цвета сегментов хвоста: кремовый → сиреневый кончик
+  const gYarn = mkRad(-0.35, -0.4, 0.05, 0, 0, 1, [[0, "#f4f4f4"], [0.55, "#bcbcbc"], [1, "#6e6e6e"]]);
+  const gYarnParty = mkRad(-0.35, -0.4, 0.05, 0, 0, 1, [[0, "#ffc4e1"], [0.55, "#ff86bf"], [1, "#d4478f"]]);
+  // свечение клубка — дешёвый радиальный градиент вместо shadowBlur на каждом кадре
+  const gYarnGlow = mkRad(0, 0, 0, 0, 0, 1, [[0, "rgba(255,255,255,0.34)"], [0.5, "rgba(255,255,255,0.12)"], [1, "rgba(255,255,255,0)"]]);
+  const gYarnGlowParty = mkRad(0, 0, 0, 0, 0, 1, [[0, "rgba(255,61,154,0.5)"], [0.5, "rgba(255,61,154,0.18)"], [1, "rgba(255,61,154,0)"]]);
+  const gShadow = mkRad(0, 0, 0, 0, 0, 1, [[0, "rgba(0,0,0,0.6)"], [1, "rgba(0,0,0,0)"]]);
+  const gGlow = mkRad(0, 0, 0, 0, 0, 1, [[0, "rgba(235,235,235,0.14)"], [1, "rgba(235,235,235,0)"]]);
+  const gGlowParty = mkRad(0, 0, 0, 0, 0, 1, [[0, "rgba(255,140,198,0.16)"], [1, "rgba(255,140,198,0)"]]);
+  // цвета сегментов хвоста: белый → серебристо-серый кончик
   const T_COL = [];
   const T_W = new Float32Array(TN);
   const T_STIFF = new Float32Array(TN);
   {
-    const a = [255, 248, 252], b = [179, 158, 219];
+    const a = 250, b = 140;
     for (let i = 0; i < TN; i++) {
       const u = i / (TN - 1);
       const m = smooth((u - 0.5) / 0.35);
-      T_COL.push(`rgb(${Math.round(lerp(a[0], b[0], m))},${Math.round(lerp(a[1], b[1], m))},${Math.round(lerp(a[2], b[2], m))})`);
+      const v = Math.round(lerp(a, b, m));
+      T_COL.push(`rgb(${v},${v},${v})`);
       T_W[i] = lerp(7.6, 5.6, u);
       T_STIFF[i] = lerp(0.3, 0.05, u);
     }
@@ -162,6 +186,29 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
   // ---------------------------------------------------------------- холст
   let W = 1, H = 1, DPR = 1, K = 1.25, FLOOR = 1;
+  // «Грязный» прямоугольник (css-пиксели): что нарисовано в этом кадре. Каждый кадр стираем только
+  // прошлый прямоугольник, а не весь полноэкранный холст — работы для GPU в десятки раз меньше.
+  let dOn = false, dX0 = 0, dY0 = 0, dX1 = 0, dY1 = 0;
+  let qOn = false, qX0 = 0, qY0 = 0, qX1 = 0, qY1 = 0;
+  let fullClear = true;
+  function bbAdd(x0, y0, x1, y1) {
+    if (!dOn) { dOn = true; dX0 = x0; dY0 = y0; dX1 = x1; dY1 = y1; return; }
+    if (x0 < dX0) dX0 = x0;
+    if (y0 < dY0) dY0 = y0;
+    if (x1 > dX1) dX1 = x1;
+    if (y1 > dY1) dY1 = y1;
+  }
+  const bbPt = (x, y, r) => bbAdd(x - r, y - r, x + r, y + r);
+  // спрайты (Z z z, пузырь реплики) рисуем один раз в офскрин-холст — без shadowBlur/ctx.font на кадре
+  const mkCanvas = (w, h) => {
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h));
+    return c;
+  };
+  // спрайты держим в обычной (CPU) памяти: рисуются один раз, а при drawImage в GPU-холст браузер
+  // кеширует загруженную текстуру. GPU-спрайт в CPU-холсте (слабые видеокарты, софтверный режим)
+  // означал бы чтение из видеопамяти на каждом кадре
+  const spriteCtx = (c) => c.getContext("2d", { willReadFrequently: true });
   const floorSurf = { el: null, floor: true, top: 1, left: 0, right: 1, valid: true, stay: true };
   try {
     if (getComputedStyle(canvas).position !== "fixed") {
@@ -280,6 +327,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     mouth: 18, tongue: 14, blush: 4, paw: 11,
     tA: 5, tK: 5, tB: 5, tStiff: 4, tSwA: 3, tSwF: 3, tTw: 4, tPuff: 6,
   };
+  const RATE_K = Object.keys(RATE);
   let pawMode = 0, pawU = 0; // 1 — умывается, 2 — машет, 3 — бьёт лапой
 
   // кукла (результат computePose)
@@ -342,21 +390,28 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   }
 
   // ---------------------------------------------------------------- реплики
-  const bub = { on: false, text: "", lines: ["", ""], n: 1, w: 0, t: 0, dur: 2.4, x: 0, y: 0, placed: false };
+  const bub = { on: false, text: "", lines: ["", ""], n: 1, w: 0, t: 0, dur: 2.4, x: 0, y: 0, placed: false, spr: null, sprKey: "" };
   function say(text, dur = 2.5) {
     if (!text) return;
+    layoutBubble(text);
+    bub.text = text; bub.t = 0; bub.dur = dur; bub.on = true;
+  }
+  // разбить реплику на 1–2 строки и померить (заново — когда догрузится шрифт)
+  function layoutBubble(text) {
+    bub.spr = null;
+    kick = true;
     ctx.font = FONT_BUBBLE;
     const maxW = 210;
     const words = String(text).split(" ");
     let l1 = "", l2 = "";
     for (const w of words) {
       const t = l1 ? l1 + " " + w : w;
-      if (!l2 && ctx.measureText(t).width <= maxW) l1 = t;
+      // первое слово всегда в первой строке (раньше длинное слово уезжало во вторую, а первая была пустой)
+      if (!l2 && (!l1 || ctx.measureText(t).width <= maxW)) l1 = t;
       else l2 = l2 ? l2 + " " + w : w;
     }
     bub.lines[0] = l1; bub.lines[1] = l2; bub.n = l2 ? 2 : 1;
     bub.w = Math.max(ctx.measureText(l1).width, l2 ? ctx.measureText(l2).width : 0);
-    bub.text = text; bub.t = 0; bub.dur = dur; bub.on = true;
   }
 
   // ---------------------------------------------------------------- указатель
@@ -389,7 +444,9 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   let clock = now();
   let lastInteract = clock;
   const interact = () => { lastInteract = now(); };
-  let party = false;
+  // вечеринку могли включить ещё до того, как кот догрузился
+  let party = document.documentElement.classList.contains("party");
+  let kick = true; // следующий rAF рисуем сразу, не дожидаясь «спокойного» интервала
   let angryUntil = 0, happyUntil = 0, surpriseUntil = 0, chatter = 0;
   const clicks = [];
   let lastMeow = 0;
@@ -1451,13 +1508,13 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   }
 
   // ================================================================ ОТРИСОВКА
-  function rrect(x, y, w, h, r) {
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
+  function rrect(x, y, w, h, r, c = ctx) {
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
   }
   function heartPath(x, y, s) {
     ctx.beginPath();
@@ -1529,7 +1586,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   }
   function pawToes(i) {
     // пальчики
-    ctx.strokeStyle = "rgba(59,34,84,0.35)";
+    ctx.strokeStyle = C.toe;
     ctx.lineWidth = 0.7;
     const x = R.footX[i] + 1.2, y = R.footY[i] - 2.4;
     ctx.beginPath();
@@ -1538,7 +1595,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     ctx.stroke();
   }
   function pawBeans(x, y) {
-    ctx.fillStyle = C.bean;
+    ctx.fillStyle = party ? CP.bean : C.bean;
     ctx.beginPath(); ctx.ellipse(x, y + 0.8, 2.3, 1.8, 0, 0, TAU); ctx.fill();
     ctx.beginPath(); ctx.arc(x - 2.4, y - 1.6, 0.95, 0, TAU); ctx.fill();
     ctx.beginPath(); ctx.arc(x, y - 2.5, 0.95, 0, TAU); ctx.fill();
@@ -1547,6 +1604,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
   function drawTail() {
     const puff = P.tPuff;
+    const tr = (T_W[0] * puff * 0.5 + OL + 2) * K;
+    for (let i = 0; i < TN; i++) bbPt(tX[i], tY[i], tr);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.strokeStyle = C.line;
@@ -1574,15 +1633,17 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     else { top = surfaceBelow(cat.x, cat.y - 4).top; h = Math.max(0, top - cat.y); }
     const f = clamp(1 - h / 420, 0.15, 1);
     const sw = (38 - 8 * P.sit) * K * f;
+    const cx = cat.x - cat.dir * 2 * K;
+    bbAdd(cx - sw * 1.35 - 2, top - 1 - 9 * K * f - 2, cx + sw * 1.35 + 2, top - 1 + 9 * K * f + 2);
     ctx.save();
-    ctx.translate(cat.x - cat.dir * 2 * K, top - 1);
+    ctx.translate(cx, top - 1);
     ctx.scale(sw * 1.35, 9 * K * f);
     ctx.globalAlpha = f;
-    ctx.fillStyle = gGlow;
+    ctx.fillStyle = party ? gGlowParty : gGlow;
     ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
     ctx.restore();
     ctx.save();
-    ctx.translate(cat.x - cat.dir * 2 * K, top - 0.5);
+    ctx.translate(cx, top - 0.5);
     ctx.scale(sw, 5 * K * f);
     ctx.globalAlpha = f;
     ctx.fillStyle = gShadow;
@@ -1596,6 +1657,11 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     // мировые точки для хит-теста и пузыря
     headWX = l2wX(R.headX, R.headY); headWY = l2wY(R.headX, R.headY);
     bodyWX = l2wX(-4, -27 + R.bDY * 0.5); bodyWY = l2wY(-4, -27 + R.bDY * 0.5);
+    // габарит куклы: локальный прямоугольник с запасом (уши, усы, поднятая лапа), переведённый в мир
+    for (let i = 0; i < 4; i++) {
+      const lx = i & 1 ? CAT_BX1 : CAT_BX0, ly = i & 2 ? CAT_BY1 : CAT_BY0;
+      bbPt(l2wX(lx, ly), l2wY(lx, ly), 3);
+    }
 
     if (!tailFront) drawTail();
 
@@ -1632,8 +1698,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     bodyPath();
     ctx.fillStyle = gBody;
     ctx.fill();
-    // мягкий розовый «рим-лайт» по спине
-    ctx.strokeStyle = "rgba(255,150,205,0.28)";
+    // мягкий «лунный» рим-лайт по спине (в вечеринку — розовый)
+    ctx.strokeStyle = party ? "rgba(255,150,205,0.28)" : "rgba(255,255,255,0.55)";
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(-24, -37.5);
@@ -1706,11 +1772,11 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     // заливка ушей
     ctx.save(); ctx.translate(-10.5, -12); ctx.rotate(farR); ctx.scale(1, earSy);
     earPath(8, 16); ctx.fillStyle = gEarFar; ctx.fill();
-    ctx.translate(1.2, -1.5); ctx.scale(0.55, 0.62); earPath(8, 16); ctx.fillStyle = "#e88cbc"; ctx.fill();
+    ctx.translate(1.2, -1.5); ctx.scale(0.55, 0.62); earPath(8, 16); ctx.fillStyle = party ? CP.innerEarFar : C.innerEarFar; ctx.fill();
     ctx.restore();
     ctx.save(); ctx.translate(9, -13.5); ctx.rotate(nearR); ctx.scale(1, earSy);
     earPath(8.6, 17); ctx.fillStyle = gEarNear; ctx.fill();
-    ctx.translate(0.4, -1.5); ctx.scale(0.56, 0.64); earPath(8.6, 17); ctx.fillStyle = C.innerEar; ctx.fill();
+    ctx.translate(0.4, -1.5); ctx.scale(0.56, 0.64); earPath(8.6, 17); ctx.fillStyle = party ? CP.innerEar : C.innerEar; ctx.fill();
     ctx.restore();
     // голова
     headPath();
@@ -1718,8 +1784,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     ctx.fill();
 
     const fx = 1.4 + P.lookX * 2.6, fy = 0.6 + P.lookY * 1.8;
-    // полоски на лбу (сиреневые)
-    ctx.strokeStyle = "rgba(170,146,214,0.75)";
+    // полоски на лбу (графитовые, как у серебристого табби)
+    ctx.strokeStyle = C.stripe;
     ctx.lineWidth = 1.7;
     const sx = 2 + fx * 0.45;
     ctx.beginPath();
@@ -1727,18 +1793,33 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     ctx.moveTo(sx, -17.4); ctx.lineTo(sx, -11.6);
     ctx.moveTo(sx + 4.3, -16.4); ctx.lineTo(sx + 3.6, -12.4);
     ctx.stroke();
-    // румянец
-    ctx.globalAlpha = clamp(P.blush, 0, 1) * 0.75;
-    ctx.fillStyle = "#ff8ac0";
-    ctx.beginPath(); ctx.ellipse(fx - 11, fy + 6.8, 4, 2.5, 0, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(fx + 15.5, fy + 6.8, 3.6, 2.4, 0, 0, TAU); ctx.fill();
-    ctx.globalAlpha = 1;
+    // румянец: в ч/б — манга-штрихи «///», в вечеринку — розовые щёчки
+    const blush = clamp(P.blush, 0, 1);
+    if (party) {
+      ctx.globalAlpha = blush * 0.75;
+      ctx.fillStyle = CP.blush;
+      ctx.beginPath(); ctx.ellipse(fx - 11, fy + 6.8, 4, 2.5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(fx + 15.5, fy + 6.8, 3.6, 2.4, 0, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (blush > 0.05) {
+      ctx.globalAlpha = blush * 0.6;
+      ctx.strokeStyle = "#7c7c7c";
+      ctx.lineWidth = 0.85;
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) {
+        const ox = k * 2.1;
+        ctx.moveTo(fx - 13.6 + ox, fy + 8.4); ctx.lineTo(fx - 12.2 + ox, fy + 5.4);
+        ctx.moveTo(fx + 13.4 + ox, fy + 8.4); ctx.lineTo(fx + 14.8 + ox, fy + 5.4);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     // глаза
     drawEye(fx - 5.6, fy - 0.6, 4.6, 6.0, false);
     drawEye(fx + 9.8, fy - 0.6, 5.3, 6.4, true);
     // нос
     const nx = fx + 2.6, ny = fy + 5.6;
-    ctx.fillStyle = C.nose;
+    ctx.fillStyle = party ? CP.nose : C.nose;
     ctx.beginPath();
     ctx.moveTo(nx - 2.5, ny - 1.2);
     ctx.quadraticCurveTo(nx, ny - 2.3, nx + 2.5, ny - 1.2);
@@ -1758,7 +1839,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       ctx.fillStyle = C.mouth; ctx.fill(); ctx.stroke();
       ctx.save();
       ctx.beginPath(); ctx.ellipse(nx, my, mw, mh, 0, 0, TAU); ctx.clip();
-      ctx.fillStyle = C.tongue;
+      ctx.fillStyle = party ? CP.tongue : C.tongue;
       ctx.beginPath(); ctx.ellipse(nx, my + mh * 0.7, mw * 0.8, mh * 0.55, 0, 0, TAU); ctx.fill();
       ctx.restore();
     } else {
@@ -1768,7 +1849,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       ctx.quadraticCurveTo(nx + 1.4, ny + 4.6, nx + 3, ny + 2.9);
       ctx.stroke();
       if (P.tongue > 0.3) {
-        ctx.fillStyle = C.tongue;
+        ctx.fillStyle = party ? CP.tongue : C.tongue;
         ctx.beginPath(); ctx.ellipse(nx + 0.3, ny + 4.4, 1.5 * P.tongue, 1.6 * P.tongue, 0, 0, TAU); ctx.fill();
       }
     }
@@ -1865,15 +1946,21 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     ctx.strokeStyle = C.line;
     ctx.lineWidth = 4.4;
     ctx.beginPath(); ctx.moveTo(-12, 13.6); ctx.quadraticCurveTo(2, 21.5, 16, 13); ctx.stroke();
-    ctx.strokeStyle = C.collar;
+    // ч/б: чёрная лента с серебристым бликом; в вечеринку — переливается радугой
+    ctx.strokeStyle = party ? RAINBOW[((clock * 3) | 0) % 12] : C.collar;
     ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(-12, 13.6); ctx.quadraticCurveTo(2, 21.5, 16, 13); ctx.stroke();
+    if (!party) {
+      ctx.strokeStyle = C.collarHi;
+      ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(-10.5, 13.3); ctx.quadraticCurveTo(2, 20.4, 14.5, 12.8); ctx.stroke();
+    }
     // сакура-кулон
     const swing = Math.sin(clock * 2.2) * 0.25 + clamp(cat.vx / 600, -0.5, 0.5) * -1;
     ctx.translate(3.5, 18.6);
     ctx.rotate(swing);
     ctx.translate(0, 2.6);
-    ctx.fillStyle = C.charm;
+    ctx.fillStyle = party ? CP.charm : C.charm;
     ctx.strokeStyle = C.line;
     ctx.lineWidth = 0.7;
     ctx.beginPath();
@@ -1885,7 +1972,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     }
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = C.charmCore;
+    ctx.fillStyle = party ? CP.charmCore : C.charmCore;
     ctx.beginPath(); ctx.arc(0, 0, 1.1, 0, TAU); ctx.fill();
     ctx.restore();
   }
@@ -1893,10 +1980,17 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   function drawYarn() {
     const b = yarn;
     if (!b.on) return;
+    const r = b.r;
+    const top = b.ground ? b.surf.top : surfaceBelow(b.x, b.y + r).top;
+    const f = clamp(1 - (top - b.y - r) / 300, 0.2, 1);
+    // габарит: шар со свечением, нитка, тень на поверхности
+    bbPt(b.x, b.y, r * 1.9 + 2);
+    for (let i = 0; i < YN; i++) bbPt(b.hx[i], b.hy[i], 2);
+    bbAdd(b.x - r * 1.1 * f - 2, top - 4 * f - 2, b.x + r * 1.1 * f + 2, top + 4 * f + 2);
     ctx.save();
     ctx.globalAlpha = b.alpha;
     // нитка
-    ctx.strokeStyle = "#ff8cc6";
+    ctx.strokeStyle = party ? PARTY.pink : "#cfcfcf";
     ctx.lineWidth = 1.6;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -1908,40 +2002,39 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     ctx.lineTo(b.hx[YN - 1], b.hy[YN - 1]);
     ctx.stroke();
     // тень
-    const top = b.ground ? b.surf.top : surfaceBelow(b.x, b.y + b.r).top;
-    const f = clamp(1 - (top - b.y - b.r) / 300, 0.2, 1);
     ctx.save();
     ctx.translate(b.x, top - 0.5);
-    ctx.scale(b.r * 1.1 * f, 3.5 * f);
+    ctx.scale(r * 1.1 * f, 3.5 * f);
     ctx.fillStyle = gShadow;
     ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
     ctx.restore();
-    // клубок
+    // клубок: мягкое свечение (градиент, без shadowBlur) + шар
     ctx.save();
     ctx.translate(b.x, b.y);
-    ctx.shadowColor = "rgba(255,61,154,0.55)";
-    ctx.shadowBlur = 14;
     ctx.save();
-    ctx.scale(b.r, b.r);
+    ctx.scale(r * 1.9, r * 1.9);
+    ctx.fillStyle = party ? gYarnGlowParty : gYarnGlow;
+    ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.scale(r, r);
     ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU);
-    ctx.fillStyle = gYarn;
+    ctx.fillStyle = party ? gYarnParty : gYarn;
     ctx.fill();
     ctx.restore();
-    ctx.shadowBlur = 0;
     ctx.save();
-    ctx.beginPath(); ctx.arc(0, 0, b.r, 0, TAU);
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU);
     ctx.clip();
     ctx.rotate(b.ang);
-    ctx.strokeStyle = "rgba(255,226,240,0.75)";
+    ctx.strokeStyle = party ? "rgba(255,226,240,0.75)" : "rgba(255,255,255,0.72)";
     ctx.lineWidth = 1.1;
-    const r = b.r;
     ctx.beginPath();
     for (let k = -2; k <= 2; k++) {
       ctx.moveTo(-r, k * r * 0.34 - r * 0.25);
       ctx.quadraticCurveTo(0, k * r * 0.34 + r * 0.32, r, k * r * 0.34 - r * 0.25);
     }
     ctx.stroke();
-    ctx.strokeStyle = "rgba(200,60,130,0.55)";
+    ctx.strokeStyle = party ? "rgba(200,60,130,0.55)" : "rgba(60,60,60,0.5)";
     ctx.beginPath();
     for (let k = -1; k <= 1; k++) {
       ctx.moveTo(k * r * 0.45 - r * 0.2, -r);
@@ -1950,27 +2043,61 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     ctx.stroke();
     ctx.restore();
     ctx.lineWidth = 1.2;
-    ctx.strokeStyle = "rgba(90,20,60,0.7)";
-    ctx.beginPath(); ctx.arc(0, 0, b.r, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = party ? "rgba(90,20,60,0.7)" : "rgba(18,18,18,0.75)";
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
     ctx.restore();
     ctx.restore();
   }
 
   function drawLaser() {
     const fl = RM ? 1 : 0.85 + Math.random() * 0.25;
+    bbPt(laser.x, laser.y, 20 * 1.1 + 3);
     ctx.save();
     ctx.translate(laser.x, laser.y);
     ctx.globalCompositeOperation = "lighter";
     ctx.scale(fl, fl);
-    ctx.fillStyle = gLaser;
+    ctx.fillStyle = party ? gLaserParty : gLaser;
     ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill();
     // ядро рисуем обычным смешиванием — иначе на белой шерсти точка пропадает
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(255,40,60,0.9)";
-    ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, TAU); ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, TAU); ctx.fill();
+    if (party) {
+      ctx.fillStyle = "rgba(255,40,60,0.9)";
+      ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, TAU); ctx.fill();
+    } else {
+      // тёмное колечко вокруг белого ядра — точку видно и на тёмном фоне, и на белом коте
+      ctx.fillStyle = "rgba(14,14,14,0.85)";
+      ctx.beginPath(); ctx.arc(0, 0, 4.2, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(0, 0, 2.7, 0, TAU); ctx.fill();
+    }
     ctx.restore();
+  }
+
+  // Z z z: три спрайта (по размеру шрифта), рисуются один раз со свечением — дальше только drawImage
+  let zSpr = [null, null, null];
+  const Z_PX = [12, 15, 19];
+  function zSprite(c) {
+    const i = c % 3;
+    let s = zSpr[i];
+    if (s) return s;
+    const px = Z_PX[i], pad = 9;
+    const w = px + pad * 2, h = Math.ceil(px * 1.3) + pad * 2;
+    const cv = mkCanvas(w * DPR, h * DPR);
+    const g = spriteCtx(cv);
+    if (g) {
+      g.scale(DPR, DPR);
+      g.font = FONT_Z[i];
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillStyle = "#ececec";
+      g.shadowColor = "rgba(255,255,255,0.6)";
+      g.shadowBlur = 5 * DPR;
+      g.fillText(i === 0 ? "z" : "Z", w / 2, h / 2);
+    }
+    s = zSpr[i] = { cv, w, h };
+    return s;
   }
 
   function drawParticles() {
@@ -1982,36 +2109,40 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       ctx.globalAlpha = clamp(a, 0, 1);
       if (p.k === HEART) {
         const s = p.s * (0.7 + 0.3 * smooth(u * 4));
+        bbPt(p.x, p.y - s * 0.3, s * 1.3 + 2);
         heartPath(p.x, p.y, s);
-        ctx.fillStyle = p.c ? RAINBOW[(p.c - 1 + ((clock * 4) | 0)) % 12] : u < 0.5 ? theme.pink : theme.hot;
+        // ч/б: белые сердечки, к концу жизни — серебро; в вечеринку — радуга
+        ctx.fillStyle = party ? RAINBOW[((p.c ? p.c - 1 : (p.h * 1.9) | 0) + ((clock * 4) | 0)) % 12] : u < 0.5 ? MONO.hot : MONO.pink;
         ctx.fill();
         ctx.fillStyle = "rgba(255,255,255,0.55)";
         ctx.beginPath(); ctx.arc(p.x - s * 0.35, p.y - s * 0.45, s * 0.16, 0, TAU); ctx.fill();
       } else if (p.k === ZZZ) {
-        ctx.font = FONT_Z[p.c % 3];
-        ctx.fillStyle = "#e9ddff";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.shadowColor = "rgba(155,123,255,0.8)";
-        ctx.shadowBlur = 8;
-        ctx.fillText(p.c === 0 ? "z" : "Z", p.x, p.y);
-        ctx.shadowBlur = 0;
+        const s = zSprite(p.c);
+        bbAdd(p.x - s.w / 2 - 1, p.y - s.h / 2 - 1, p.x + s.w / 2 + 1, p.y + s.h / 2 + 1);
+        ctx.drawImage(s.cv, p.x - s.w / 2, p.y - s.h / 2, s.w, s.h);
       } else if (p.k === DUST) {
-        ctx.fillStyle = "rgba(255,205,232,0.32)";
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (0.6 + 0.7 * u), 0, TAU); ctx.fill();
+        const r = p.s * (0.6 + 0.7 * u);
+        bbPt(p.x, p.y, r + 1);
+        ctx.fillStyle = party ? "rgba(255,205,232,0.32)" : "rgba(220,220,220,0.3)";
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
       } else if (p.k === SPARK) {
-        ctx.fillStyle = theme.pink;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (1 - u), 0, TAU); ctx.fill();
+        const r = p.s * (1 - u);
+        bbPt(p.x, p.y, r + 1);
+        ctx.fillStyle = party ? PARTY.pink : MONO.pink;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
       }
     }
     ctx.globalAlpha = 1;
   }
+  let hotParts = 0; // живые «быстрые» частицы (всё, кроме медленных Z z z) — пока они есть, рисуем на 60
   function updateParticles(dt) {
+    hotParts = 0;
     for (let i = 0; i < MAXP; i++) {
       const p = parts[i];
       if (!p.on) continue;
       p.t += dt;
       if (p.t >= p.life) { p.on = false; continue; }
+      if (p.k !== ZZZ) hotParts++;
       if (p.k === HEART) { p.x += (p.vx + Math.sin(p.t * 5 + p.h) * 18) * dt; p.y += p.vy * dt; p.vy *= 1 - 0.6 * dt; }
       else if (p.k === ZZZ) { p.x += (p.vx + Math.sin(p.t * 2.5 + p.h) * 8) * dt; p.y += p.vy * dt; }
       else if (p.k === DUST) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 1 - 4 * dt; p.vy *= 1 - 4 * dt; }
@@ -2019,6 +2150,46 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     }
   }
 
+  // пузырь реплики: тело (плашка + свечение + текст) — спрайт, рисуется один раз на реплику;
+  // на кадре — только drawImage и крошечный хвостик
+  const BPAD = 26;
+  function bubbleSprite(w, h) {
+    const key = `${w}|${h}|${party ? 1 : 0}|${DPR}`;
+    if (bub.spr && bub.sprKey === key) return bub.spr;
+    const sw = w + BPAD * 2, sh = h + BPAD * 2;
+    const cv = mkCanvas(sw * DPR, sh * DPR);
+    const g = spriteCtx(cv);
+    if (g) {
+      g.scale(DPR, DPR);
+      g.translate(BPAD, BPAD);
+      g.beginPath();
+      rrect(0, 0, w, h, 14, g);
+      const gr = g.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, "#ffffff");
+      gr.addColorStop(1, party ? "#ffe1f0" : "#e4e4e4");
+      g.shadowColor = party ? "rgba(255,61,154,0.5)" : "rgba(255,255,255,0.32)";
+      g.shadowBlur = 14 * DPR;
+      g.fillStyle = gr;
+      g.fill();
+      g.shadowBlur = 0;
+      g.shadowColor = "rgba(0,0,0,0)";
+      g.lineWidth = 1.5;
+      g.strokeStyle = party ? PARTY.pink : MONO.pink;
+      g.stroke();
+      g.font = FONT_BUBBLE;
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillStyle = party ? PARTY.deep : MONO.deep;
+      if (bub.n === 1) g.fillText(bub.lines[0], w / 2, h / 2 + 0.5);
+      else {
+        g.fillText(bub.lines[0], w / 2, 15.5);
+        g.fillText(bub.lines[1], w / 2, 31.5);
+      }
+    }
+    bub.spr = { cv, w: sw, h: sh };
+    bub.sprKey = key;
+    return bub.spr;
+  }
   function drawBubble(dt) {
     if (!bub.on) return;
     bub.t += dt;
@@ -2027,7 +2198,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     const appear = u < 0.28 ? u / 0.28 : 1;
     const back = 1.70158;
     const e = appear - 1;
-    const sc = RM ? 1 : 1 + (back + 1) * e * e * e + back * e * e; // easeOutBack
+    const sc = RM ? 1 : Math.max(0, 1 + (back + 1) * e * e * e + back * e * e); // easeOutBack
     const alpha = clamp(Math.min(appear * 2, (bub.dur - u) / 0.3), 0, 1);
     const w = Math.ceil(bub.w) + 26, h = bub.n === 2 ? 46 : 30;
     // якорь — над головой
@@ -2049,53 +2220,75 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     }
     const tx = side === 0 ? clamp(bub.x, bx + 14, bx + w - 14) : side > 0 ? bx : bx + w;
     const ty = side === 0 ? by + h : clamp(headWY - 6 * K, by + 10, by + h - 10);
-    ctx.save();
-    ctx.globalAlpha = alpha;
     const ox = side === 0 ? tx : side > 0 ? bx - 7 : bx + w + 7;
     const oy = side === 0 ? by + h + 7 : ty;
+    // габарит с учётом «выпрыгивания» (масштаб вокруг кончика хвостика)
+    bbAdd(ox + (bx - BPAD - ox) * sc - 2, oy + (by - BPAD - oy) * sc - 2, ox + (bx + w + BPAD - ox) * sc + 2, oy + (by + h + BPAD - oy) * sc + 2);
+    if (alpha <= 0 || sc <= 0.001) return;
+    const spr = bubbleSprite(w, h);
+    ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.translate(ox, oy);
     ctx.scale(sc, sc);
     ctx.translate(-ox, -oy);
-    ctx.beginPath();
-    rrect(bx, by, w, h, 14);
-    // хвостик пузыря
+    ctx.drawImage(spr.cv, bx - BPAD, by - BPAD, spr.w, spr.h);
+    // хвостик: заливка заходит внутрь плашки и прячет её рамку — шва нет; обводим только бока
+    const k = clamp((ty - by) / h, 0, 1);
+    const v = Math.round(255 - 27 * k);
+    ctx.fillStyle = party ? `rgb(255,${Math.round(255 - 30 * k)},${Math.round(255 - 15 * k)})` : `rgb(${v},${v},${v})`;
+    ctx.strokeStyle = party ? PARTY.pink : MONO.pink;
+    ctx.lineWidth = 1.5;
     if (side === 0) {
+      ctx.beginPath();
       ctx.moveTo(tx - 7, ty - 0.5);
       ctx.quadraticCurveTo(tx - 1, ty + 3, tx + 1, ty + 9);
       ctx.quadraticCurveTo(tx + 3, ty + 2, tx + 8, ty - 0.5);
+      ctx.lineTo(tx + 8, ty - 2.4);
+      ctx.lineTo(tx - 7, ty - 2.4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(tx - 7, ty - 0.5);
+      ctx.quadraticCurveTo(tx - 1, ty + 3, tx + 1, ty + 9);
+      ctx.quadraticCurveTo(tx + 3, ty + 2, tx + 8, ty - 0.5);
+      ctx.stroke();
     } else {
       const d = -side;
+      ctx.beginPath();
       ctx.moveTo(tx - d * 0.5, ty - 6);
       ctx.quadraticCurveTo(tx + d * 3, ty - 1, tx + d * 9, ty + 1);
       ctx.quadraticCurveTo(tx + d * 2, ty + 3, tx - d * 0.5, ty + 6);
-    }
-    ctx.shadowColor = "rgba(255,61,154,0.5)";
-    ctx.shadowBlur = 18;
-    ctx.save();
-    ctx.translate(0, by - (bub.n === 2 ? 0 : 8));
-    ctx.fillStyle = gBubble;
-    ctx.fill();
-    ctx.restore();
-    ctx.shadowBlur = 0;
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = theme.pink;
-    ctx.stroke();
-    // чтобы хвостик слился с пузырём, перекрываем шов
-    ctx.font = FONT_BUBBLE;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = theme.deep;
-    if (bub.n === 1) ctx.fillText(bub.lines[0], bx + w / 2, by + h / 2 + 0.5);
-    else {
-      ctx.fillText(bub.lines[0], bx + w / 2, by + 15.5);
-      ctx.fillText(bub.lines[1], bx + w / 2, by + 31.5);
+      ctx.lineTo(tx - d * 2.4, ty + 6);
+      ctx.lineTo(tx - d * 2.4, ty - 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(tx - d * 0.5, ty - 6);
+      ctx.quadraticCurveTo(tx + d * 3, ty - 1, tx + d * 9, ty + 1);
+      ctx.quadraticCurveTo(tx + d * 2, ty + 3, tx - d * 0.5, ty + 6);
+      ctx.stroke();
     }
     ctx.restore();
   }
 
+  function clearBox(x0, y0, x1, y1) {
+    const a = Math.max(0, Math.floor(x0 * DPR) - 2), b = Math.max(0, Math.floor(y0 * DPR) - 2);
+    const c = Math.min(canvas.width, Math.ceil(x1 * DPR) + 2), d = Math.min(canvas.height, Math.ceil(y1 * DPR) + 2);
+    if (c > a && d > b) ctx.clearRect(a, b, c - a, d - b);
+  }
+  // пустой холст прячем — компоновщику не нужно смешивать полноэкранный прозрачный слой
+  let layerOn = true;
+  function setLayer(on) {
+    if (on === layerOn) return;
+    layerOn = on;
+    canvas.style.visibility = on ? "" : "hidden";
+  }
   function render(dt) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // стираем только то, что рисовали в прошлом кадре
+    if (fullClear) { ctx.clearRect(0, 0, canvas.width, canvas.height); fullClear = false; }
+    else if (qOn) clearBox(qX0, qY0, qX1, qY1);
+    dOn = false;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     if (cat.vis) {
       drawShadow();
@@ -2105,15 +2298,33 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     drawParticles();
     if (laser.on && laser.has) drawLaser();
     drawBubble(dt);
+    qOn = dOn; qX0 = dX0; qY0 = dY0; qX1 = dX1; qY1 = dY1;
+    setLayer(dOn);
   }
 
   // ================================================================ КАДР
   let acc = 0;
+  // getBoundingClientRect карточки — не каждый кадр, а после скролла/ресайза и раз в 0.2 с
+  // (первые секунды после появления — каждый кадр: карточка ещё может доезжать анимацией входа)
+  let platDirty = true, platT = 0, warmT = 3;
+  document.addEventListener("scroll", () => { platDirty = true; kick = true; }, { capture: true, passive: true });
   function tick(dt) {
     clock = now();
     platScanT -= dt;
-    if (platScanT <= 0) { scanPlatforms(); platScanT = 1; }
-    measurePlatforms();
+    if (platScanT <= 0) {
+      scanPlatforms();
+      platScanT = 1;
+      // окно перетащили на монитор с другим масштабом — resize при этом приходит не всегда
+      if ((window.devicePixelRatio || 1) !== devDpr) resize();
+      platDirty = true;
+    }
+    platT -= dt;
+    if (warmT > 0) warmT -= dt;
+    if (platDirty || platT <= 0 || warmT > 0) {
+      measurePlatforms();
+      platDirty = false;
+      platT = 0.2;
+    }
     petTick();
 
     resetTargets();
@@ -2217,7 +2428,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     TG.earL = 0; TG.earR = 0;
 
     // сглаживание параметров позы
-    for (const k in RATE) P[k] = follow(P[k], TG[k], RATE[k], dt);
+    for (let i = 0; i < RATE_K.length; i++) { const k = RATE_K[i]; P[k] = follow(P[k], TG[k], RATE[k], dt); }
 
     computePose();
 
@@ -2253,10 +2464,57 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   }
 
   // ================================================================ ЦИКЛ
-  let raf = 0, running = false, lastT = 0, errored = false, timeScale = 1, perfMs = 0;
+  let raf = 0, running = false, lastT = 0, schedT = 0, frameMs = 1000 / 60, errored = false, timeScale = 1, perfMs = 0;
+  // Сколько кадров/с коту нужно сейчас. Активен — 60 (это же кап на мониторах 120/144 Гц),
+  // спокойно сидит/лежит — 30, спит — 20 (дыхание и Z z z медленные), «ушёл» за экран — 20.
+  function wantFps() {
+    let fps = 60;
+    if (!cat.vis) {
+      if (!yarn.on && !laser.on && !bub.on && hotParts === 0) fps = 20;
+    } else if (!grab && !pet.active && !laser.on && !yarn.on && !bub.on && !party && hotParts === 0 &&
+      cat.mode === "ground" && Math.abs(cat.vx) < 1) {
+      const tt = cat.task?.type;
+      const near = ptr.in && clock - ptr.lastMove < 1 && Math.abs(ptr.x - headWX) < 420 && Math.abs(ptr.y - headWY) < 420;
+      if (!near) {
+        if (tt === "sleep") fps = 20;
+        else if (tt === "sit" || tt === "loaf" || tt === "stand") fps = 30;
+      }
+    }
+    return qLevel >= 2 ? Math.min(fps, 30) : fps;
+  }
+  // Автокачество: если вся страница не вытягивает (<40 кадров/с два замера по 2 с подряд) —
+  // снижаем разрешение холста кота, на втором шаге ещё и его частоту до 30. Первые 4 с после
+  // старта не судим (догрузка 3D, видео). Если потом 8 с подряд стабильно ≥55 — шаг возвращаем
+  // (не больше двух раз, чтобы не качаться туда-сюда).
+  let qLevel = 0, prT0 = 0, prN = 0, prSlow = 0, prGood = 0, prWarm = 2, prBack = 0;
+  function probe(ts) {
+    if (!prT0) { prT0 = ts; prN = 0; return; }
+    prN++;
+    const span = ts - prT0;
+    if (span < 2000) return;
+    const fps = (prN * 1000) / span;
+    prT0 = ts; prN = 0;
+    if (prWarm > 0) { prWarm--; return; }
+    if (fps < 40) {
+      prGood = 0;
+      if (qLevel < 2 && ++prSlow >= 2) { prSlow = 0; qLevel++; resize(); }
+    } else {
+      prSlow = 0;
+      if (fps >= 55 && qLevel > 0 && prBack < 2 && ++prGood >= 4) { prGood = 0; prBack++; qLevel--; resize(); }
+    }
+  }
   function frame(ts) {
     if (!running) return;
     raf = requestAnimationFrame(frame);
+    probe(ts);
+    const since = ts - schedT;
+    // kick (клик, реплика, курсор рядом) — рисуем без «спокойной» паузы, но не чаще 60 (30) в секунду
+    const need = kick ? Math.min(frameMs, qLevel >= 2 ? 1000 / 30 : 1000 / 60) : frameMs;
+    // холст только что пересоздан (resize / смена качества) — он уже пустой, рисуем сразу, иначе кот мигнёт
+    if (since < need - 1.5 && !fullClear) return;
+    kick = false;
+    // переносим «лишек», чтобы на 144 Гц в среднем выходило ровно 60, а не 48
+    schedT = ts - clamp(since - need, 0, need * 0.5);
     let dt = (ts - lastT) / 1000;
     lastT = ts;
     if (!(dt > 0)) dt = 1 / 60;
@@ -2266,6 +2524,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       const t0 = performance.now();
       tick(dt);
       render(dt);
+      frameMs = 1000 / wantFps();
       perfMs = perfMs * 0.95 + (performance.now() - t0) * 0.05;
     } catch (e) {
       if (!errored) { errored = true; console.error("[cat]", e); }
@@ -2275,7 +2534,9 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   function startLoop() {
     if (running || document.hidden || errored) return;
     running = true;
-    lastT = performance.now();
+    lastT = schedT = performance.now();
+    prT0 = 0; prSlow = 0; prGood = 0; prWarm = 2; // после смены вкладки — снова «разогрев»
+    kick = true;
     raf = requestAnimationFrame(frame);
   }
   function stopLoop() {
@@ -2349,7 +2610,16 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     return (x - yarn.x) ** 2 + (y - yarn.y) ** 2 < r * r;
   }
   // элемент интерфейса поверх кота (z-index > 5, fixed) — его не трогаем
+  // (getComputedStyle по цепочке предков — результат для одного и того же элемента кешируем на 0.3 с,
+  // чтобы ведение мыши над котом не пересчитывало стили на каждом pointermove)
+  let ocEl = null, ocT = -1e9, ocRes = false;
   function overChrome(t) {
+    const n = performance.now();
+    if (t === ocEl && n - ocT < 300) return ocRes;
+    ocEl = t; ocT = n;
+    return (ocRes = overChromeRaw(t));
+  }
+  function overChromeRaw(t) {
     for (let el = t; el && el !== document.body && el !== de; el = el.parentElement) {
       if (el === toysEl) return true;
       let cs;
@@ -2367,9 +2637,12 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     e.stopImmediatePropagation();
   }
 
+  let lastDownT = -1e9;
   function onDown(e) {
     trackPtr(e);
     ptr.down = true;
+    lastDownT = performance.now();
+    kick = true;
     swallowUntil = 0; // новый жест — прошлый «съеденный» клик больше не ждём
     if (grab || laserTouch !== -1) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -2411,6 +2684,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
   function onMove(e) {
     trackPtr(e);
+    if (grab || (cat.vis && Math.abs(e.clientX - headWX) < 420 && Math.abs(e.clientY - headWY) < 420)) kick = true;
     if (laser.on && (e.pointerType === "mouse" || e.buttons)) laserTo(e.clientX, e.clientY);
     if (grab && e.pointerId === grab.id) {
       swallow(e);
@@ -2453,6 +2727,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   function onUp(e) {
     trackPtr(e);
     ptr.down = false;
+    kick = true;
     if (laserTouch !== -1 && e.pointerId === laserTouch) { laserTouch = -1; swallow(e); return; }
     if (!grab || e.pointerId !== grab.id) return;
     swallow(e);
@@ -2493,10 +2768,19 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   window.addEventListener("click", (e) => {
     if (performance.now() < swallowUntil) { swallowUntil = 0; swallow(e); }
   }, { capture: true });
-  // скролл страницы блокируем только когда палец начался на коте / клубке (или водит лазер)
-  const blockTouch = (e) => { if ((grab || laserTouch !== -1) && e.cancelable) e.preventDefault(); };
-  window.addEventListener("touchstart", blockTouch, { capture: true, passive: false });
-  window.addEventListener("touchmove", blockTouch, { capture: true, passive: false });
+  // Скролл страницы блокируем только когда палец начался на коте / клубке (или водит лазер).
+  // Хватает отмены touchstart: она отменяет прокрутку всего жеста. Раньше висел ещё и
+  // непассивный touchmove на window — из-за него браузер ждал главный поток на КАЖДОМ движении
+  // пальца, и скролл на телефонах дёргался, пока 3D-сцена занимала кадр.
+  window.addEventListener("touchstart", (e) => {
+    if (!e.cancelable) return;
+    if (grab || laserTouch !== -1) { e.preventDefault(); return; }
+    // если движок прислал touchstart раньше pointerdown — решаем по геометрии сами
+    if (performance.now() - lastDownT < 60) return;
+    const tp = e.changedTouches && e.changedTouches[0];
+    if (!tp || overChrome(e.target)) return;
+    if (laser.on || hitYarn(tp.clientX, tp.clientY, 12) || hitCat(tp.clientX, tp.clientY, 6)) e.preventDefault();
+  }, { capture: true, passive: false });
   window.addEventListener("contextmenu", (e) => {
     if (grab || hitCat(e.clientX, e.clientY, 4)) e.preventDefault();
   }, { capture: true });
@@ -2526,19 +2810,19 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   opacity:0;transform:translateY(14px) scale(.9);pointer-events:none;transition:opacity .6s ease,transform .7s cubic-bezier(.2,.9,.25,1.25)}
 .kex-toys.is-on{opacity:1;transform:none;pointer-events:auto}
 .kex-toy{all:unset;box-sizing:border-box;position:relative;width:var(--chrome-size,44px);height:var(--chrome-size,44px);border-radius:50%;display:grid;place-items:center;cursor:pointer;
-  background:var(--chrome-bg,rgba(18,10,32,.55));
+  background:var(--chrome-bg,rgba(14,14,14,.55));
   border:1px solid var(--chrome-border,rgba(255,255,255,.13));
   box-shadow:var(--chrome-shadow,0 10px 26px -8px rgba(0,0,0,.6));
   -webkit-backdrop-filter:var(--chrome-blur,blur(14px));backdrop-filter:var(--chrome-blur,blur(14px));
   transition:transform .3s cubic-bezier(.3,1.5,.5,1),box-shadow .3s,border-color .25s,background-color .25s;-webkit-tap-highlight-color:transparent}
-@media (hover:hover){.kex-toy:hover{transform:translateY(-2px);border-color:var(--chrome-border-hi,rgba(255,140,198,.6));box-shadow:var(--chrome-shadow-hi,0 0 24px -4px rgba(255,61,154,.5))}}
+@media (hover:hover){.kex-toy:hover{transform:translateY(-2px);border-color:var(--chrome-border-hi,rgba(255,255,255,.5));box-shadow:var(--chrome-shadow-hi,0 0 24px -4px rgba(255,255,255,.35))}}
 .kex-toy:active{transform:scale(.92)}
-.kex-toy:focus-visible{outline:2px solid #ff8cc6;outline-offset:3px}
-.kex-toy[aria-pressed="true"]{border-color:var(--chrome-border-hi,#ff8cc6);background:var(--chrome-bg-on,rgba(64,14,52,.62));
-  box-shadow:var(--chrome-shadow-on,0 0 26px -4px rgba(255,61,154,.55))}
+.kex-toy:focus-visible{outline:2px solid #d4d4d4;outline-offset:3px}
+.kex-toy[aria-pressed="true"]{border-color:var(--chrome-border-hi,rgba(255,255,255,.5));background:var(--chrome-bg-on,rgba(40,40,40,.62));
+  box-shadow:var(--chrome-shadow-on,0 0 26px -4px rgba(255,255,255,.4))}
 .kex-toy::after{content:attr(data-tip);position:absolute;left:0;bottom:calc(100% + 9px);transform:translateY(4px);white-space:nowrap;
-  font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.02em;color:#f6f0ff;background:var(--tip-bg,rgba(18,10,32,.86));
-  border:1px solid var(--tip-border,rgba(255,140,198,.3));padding:6px 8px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+  font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.02em;color:#f2f2f2;background:var(--tip-bg,rgba(12,12,12,.86));
+  border:1px solid var(--tip-border,rgba(255,255,255,.22));padding:6px 8px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
 @media (hover:hover){.kex-toy:hover::after{opacity:1;transform:none;transition-delay:.35s}}
 .kex-toy:focus-visible::after{opacity:1;transform:none}
 /* десктоп: столбиком у левого края — так кнопки никогда не залезают под карточку, даже на низких экранах */
@@ -2553,16 +2837,26 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   .kex-toys{top:max(var(--chrome-edge,16px),env(safe-area-inset-top));bottom:auto;transform:translateY(-10px) scale(.9)}
   .kex-toy::after{top:calc(100% + 9px);bottom:auto;transform:translateY(-4px)}
 }
-.kex-dot{width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 38% 34%,#fff 0 16%,#ff4a4a 42%,#c3001c 100%);
-  box-shadow:0 0 10px 2px rgba(255,40,60,.7)}
-.kex-toy[aria-pressed="true"] .kex-dot{animation:kexPulse 1.1s ease-in-out infinite}
+/* лазер: ч/б — «лунная» точка; в вечеринку — снова красная. Пульс — opacity псевдоэлемента
+   (композитится на GPU), а не анимация box-shadow с перерисовкой каждого кадра */
+.kex-dot{position:relative;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 38% 34%,#fff 0 18%,#d6d6d6 45%,#5e5e5e 100%);
+  box-shadow:0 0 10px 2px rgba(255,255,255,.5)}
+.kex-dot::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 16px 5px rgba(255,255,255,.7);opacity:0}
+.kex-toy[aria-pressed="true"] .kex-dot::after{animation:kexPulse 1.1s ease-in-out infinite}
+html.party .kex-dot{background:radial-gradient(circle at 38% 34%,#fff 0 16%,#ff4a4a 42%,#c3001c 100%);box-shadow:0 0 10px 2px rgba(255,40,60,.7)}
+html.party .kex-dot::after{box-shadow:0 0 16px 5px rgba(255,40,60,.85)}
 .kex-toy svg{width:24px;height:24px;display:block}
-@keyframes kexPulse{50%{box-shadow:0 0 16px 5px rgba(255,40,60,.85)}}
+@keyframes kexPulse{50%{opacity:1}}
+/* клубок-иконка: цвета через CSS, чтобы вечеринка могла их перекрасить */
+.kex-y0{stop-color:#f4f4f4}.kex-y1{stop-color:#bcbcbc}.kex-y2{stop-color:#6e6e6e}
+.kex-yt{stroke:#cfcfcf}.kex-yb{stroke:#1e1e1e}.kex-ys{stroke:#ffffff}
+html.party .kex-y0{stop-color:#ffc4e1}html.party .kex-y1{stop-color:#ff86bf}html.party .kex-y2{stop-color:#d4478f}
+html.party .kex-yt{stroke:#ff8cc6}html.party .kex-yb{stroke:#7a1d4f}html.party .kex-ys{stroke:#ffe2f0}
 html.kex-grab,html.kex-grab *{cursor:grab!important}
 html.kex-grabbing,html.kex-grabbing *{cursor:grabbing!important}
 html.kex-laser,html.kex-laser *:not(.kex-toy):not(.kex-toy *):not(.controls):not(.controls *){cursor:none!important}
 html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-select:none!important}
-@media (prefers-reduced-motion:reduce){.kex-toys,.kex-toy,.kex-toy::after{transition:none}.kex-toy[aria-pressed="true"] .kex-dot{animation:none}}
+@media (prefers-reduced-motion:reduce){.kex-toys,.kex-toy,.kex-toy::after{transition:none}.kex-toy[aria-pressed="true"] .kex-dot::after{animation:none;opacity:.6}}
 `;
   document.head.appendChild(style);
   const toysEl = document.createElement("div");
@@ -2570,12 +2864,12 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
   toysEl.setAttribute("role", "group");
   toysEl.setAttribute("aria-label", `Игрушки для кота ${NAME}`);
   toysEl.innerHTML =
-    `<button type="button" class="kex-toy" data-toy="laser" data-tip="лазер" aria-pressed="false" aria-label="Лазерная указка: кот будет ловить красную точку"><span class="kex-dot"></span></button>` +
+    `<button type="button" class="kex-toy" data-toy="laser" data-tip="лазер" aria-pressed="false" aria-label="Лазерная указка: кот будет ловить светящуюся точку"><span class="kex-dot"></span></button>` +
     `<button type="button" class="kex-toy" data-toy="yarn" data-tip="клубок" aria-pressed="false" aria-label="Клубок ниток для кота">` +
-    `<svg viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="kexY" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#ffc4e1"/><stop offset=".6" stop-color="#ff86bf"/><stop offset="1" stop-color="#d4478f"/></radialGradient></defs>` +
-    `<path d="M18.6 16.4c1.6.7 2.6 2.2 2.4 3.9" fill="none" stroke="#ff8cc6" stroke-width="1.3" stroke-linecap="round"/>` +
-    `<circle cx="11.5" cy="11.5" r="8" fill="url(#kexY)" stroke="#7a1d4f" stroke-width=".9"/>` +
-    `<path d="M4.6 9.2c3.6.2 9 2.7 11.6 8.6M6.3 5.6c3.4 1.2 8.4 5 9.9 11.3M4 13.3c3.2-.1 7.2 2 9 5.8M11 3.6c2.8 1.7 6 5 7.2 9" fill="none" stroke="#ffe2f0" stroke-opacity=".8" stroke-width="1.1" stroke-linecap="round"/></svg></button>`;
+    `<svg viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="kexY" cx="38%" cy="32%" r="70%"><stop class="kex-y0" offset="0" stop-color="#f4f4f4"/><stop class="kex-y1" offset=".6" stop-color="#bcbcbc"/><stop class="kex-y2" offset="1" stop-color="#6e6e6e"/></radialGradient></defs>` +
+    `<path class="kex-yt" d="M18.6 16.4c1.6.7 2.6 2.2 2.4 3.9" fill="none" stroke="#cfcfcf" stroke-width="1.3" stroke-linecap="round"/>` +
+    `<circle class="kex-yb" cx="11.5" cy="11.5" r="8" fill="url(#kexY)" stroke="#1e1e1e" stroke-width=".9"/>` +
+    `<path class="kex-ys" d="M4.6 9.2c3.6.2 9 2.7 11.6 8.6M6.3 5.6c3.4 1.2 8.4 5 9.9 11.3M4 13.3c3.2-.1 7.2 2 9 5.8M11 3.6c2.8 1.7 6 5 7.2 9" fill="none" stroke="#ffffff" stroke-opacity=".8" stroke-width="1.1" stroke-linecap="round"/></svg></button>`;
   // пока кнопки не показаны (кот ещё не приземлился) — их не должно быть видно и Tab'у
   toysEl.inert = true;
   document.body.appendChild(toysEl);
@@ -2593,6 +2887,7 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
   let laserHinted = false;
   function setLaser(on) {
     laser.on = on;
+    kick = true;
     if (!on) laserTouch = -1;
     laserBtn.setAttribute("aria-pressed", String(on));
     de.classList.toggle("kex-laser", on && !env?.coarse);
@@ -2608,7 +2903,8 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
         }
         laser.has = true;
         laser.x = clamp(cat.x + (cat.x < W / 2 ? 1 : -1) * 140 * K, 40, W - 40);
-        laser.y = cat.surf.top - 6;
+        // кот мог «уйти» за край вместе с уехавшей карточкой — тогда точку ставим просто на экран
+        laser.y = cat.vis && cat.surf.top > 40 && cat.surf.top < H ? cat.surf.top - 6 : H * 0.62;
       }
       laser.speed = 0;
       wake(false);
@@ -2621,6 +2917,7 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
   }
 
   function setYarn(on) {
+    kick = true;
     sfx("pop");
     interact();
     const b = yarn;
@@ -2664,10 +2961,12 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
     if (document.hidden) {
       stopLoop();
       if (pet.purring) { sfx("stopPurr"); pet.purring = false; }
-    } else if (cat.vis || yarn.on) startLoop();
+    } else if (cat.mode !== "hidden" || yarn.on) startLoop(); // раньше «ушедший» за экран кот (vis=false) после смены вкладки больше не возвращался
   });
   window.addEventListener("sempik:party", (e) => {
     party = !!e?.detail?.on;
+    bub.spr = null; // перекрасить пузырь
+    kick = true;
     if (cat.mode === "ground" && cat.task?.type !== "petted") {
       if (party) { wake(false); setTask("dance"); }
       else think();
@@ -2675,14 +2974,40 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
     if (party && cat.vis) for (let i = 0; i < (RM ? 3 : 10); i++) emit(HEART, cat.x + rand(-40, 40) * K, cat.y - rand(30, 80) * K, rand(-60, 60), -rand(60, 130), rand(1.2, 2), rand(6, 10), 1 + i);
   });
 
+  // Плотность пикселей холста: телефон ≤1.5, ПК ≤2, и не больше ~3.7 Мп на весь экран
+  // (4K/ретина-мониторы иначе гоняют прозрачный слой в 8–33 Мп каждый кадр). Автокачество режет дальше.
+  const MAX_PX = 3.7e6;
+  let devDpr = window.devicePixelRatio || 1;
+  function pickDpr(mob) {
+    let d = Math.min(devDpr, mob ? 1.5 : 2, Math.sqrt(MAX_PX / (W * H)));
+    if (qLevel >= 1) d = Math.min(d, mob ? 1.25 : 1.5);
+    if (qLevel >= 2) d = Math.min(d, 1);
+    return Math.max(0.5, Math.round(d * 100) / 100);
+  }
   function resize() {
     const r = canvas.getBoundingClientRect();
     W = Math.max(1, Math.round(r.width || innerWidth));
     H = Math.max(1, Math.round(r.height || innerHeight));
     const mob = isMobile();
-    DPR = Math.min(window.devicePixelRatio || 1, mob ? 1.5 : 2);
-    canvas.width = Math.round(W * DPR);
-    canvas.height = Math.round(H * DPR);
+    devDpr = window.devicePixelRatio || 1;
+    const nd = pickDpr(mob);
+    if (nd !== DPR) {
+      DPR = nd;
+      zSpr = [null, null, null]; // спрайты рисуются в разрешении холста
+      bub.spr = null;
+      fullClear = true;
+    }
+    const cw = Math.round(W * DPR), ch = Math.round(H * DPR);
+    // присваивание width/height пересоздаёт буфер даже при том же размере — только если размер изменился
+    // (на телефонах resize прилетает при каждом показе/скрытии адресной строки)
+    if (canvas.width !== cw || canvas.height !== ch) {
+      canvas.width = cw;
+      canvas.height = ch;
+      fullClear = true;
+    }
+    if (fullClear) qOn = false;
+    platDirty = true;
+    kick = true;
     K = mob ? (W < 480 ? 1.04 : 1.12) : 1.28;
     FLOOR = H - 3;
     floorSurf.top = FLOOR; floorSurf.left = 0; floorSurf.right = W;
@@ -2695,6 +3020,13 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
   }
   resize();
   scanPlatforms();
+  // шрифты догрузились — перерисовать спрайты (Z z z, пузырь) уже нужным шрифтом
+  try {
+    document.fonts?.addEventListener?.("loadingdone", () => {
+      zSpr = [null, null, null];
+      if (bub.on) layoutBubble(bub.text);
+    });
+  } catch (_) { /* старый браузер */ }
 
   // ================================================================ ПОЯВЛЕНИЕ
   let dropping = false;

@@ -22,13 +22,15 @@ export const CONFIG = {
     "Привет, я sempik. Пишу код, собираю странные штуки для браузера и иногда играю. " +
     "Пиши в любую соцсеть ниже — отвечаю, когда не сплю.",
 
-  // кнопки-ссылки. url — откроется в новой вкладке; copy — текст скопируется в буфер
+  // кнопки-ссылки. url — откроется в новой вкладке; copy — текст скопируется в буфер.
+  // color — оттенок серого (сайт чёрно-белый); настоящие цвета брендов включаются только
+  // в режиме вечеринки (css/style.css, раздел 8)
   links: [
-    { id: "discord",  name: "Discord",  sub: "babazina",         copy: "babazina",                                            color: "#5865F2" },
-    { id: "github",   name: "GitHub",   sub: "@sempik",          url: "https://github.com/sempik",                           color: "#f0f6fc" },
+    { id: "discord",  name: "Discord",  sub: "babazina",         copy: "babazina",                                            color: "#cfcfcf" },
+    { id: "github",   name: "GitHub",   sub: "@sempik",          url: "https://github.com/sempik",                           color: "#f2f2f2" },
     // Telegram: впиши ник и раскомментируй строку — кнопка и 3D-логотип появятся сами
-    // { id: "telegram", name: "Telegram", sub: "@ник",          url: "https://t.me/ник",                                    color: "#29A9EB" },
-    { id: "steam",    name: "Steam",    sub: "профиль",          url: "https://steamcommunity.com/profiles/76561199049345067/", color: "#66c0f4" },
+    // { id: "telegram", name: "Telegram", sub: "@ник",          url: "https://t.me/ник",                                    color: "#bdbdbd" },
+    { id: "steam",    name: "Steam",    sub: "профиль",          url: "https://steamcommunity.com/profiles/76561199049345067/", color: "#a6a6a6" },
   ],
 
   // живая статистика с GitHub API (если API не ответит — просто не показывается)
@@ -48,15 +50,16 @@ export const CONFIG = {
     },
   },
 
-  // общая палитра (CSS-переменные в css/style.css повторяют её)
+  // общая палитра — чёрно-белая, «сакура при лунном свете» (CSS-переменные в css/style.css
+  // повторяют её). Цвет возвращается только в пасхалке-вечеринке (Konami-код)
   theme: {
-    bg:     "#07050c",
-    ink:    "#f6f0ff",
-    muted:  "#a79cbd",
-    pink:   "#ff8cc6",
-    hot:    "#ff3d9a",
-    violet: "#9b7bff",
-    deep:   "#2a1446",
+    bg:     "#070707",
+    ink:    "#f2f2f2",
+    muted:  "#9b9b9b",
+    pink:   "#d4d4d4", // светлый акцент
+    hot:    "#ffffff", // сильный акцент
+    violet: "#8a8a8a", // средний
+    deep:   "#1a1a1a", // тёмный
   },
 };
 // =====================================================

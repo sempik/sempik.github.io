@@ -7,6 +7,8 @@ import { iconSvg } from "./icons.js";
 const $ = (sel, root = document) => root.querySelector(sel);
 const raf = (fn) => requestAnimationFrame(fn);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+// коэффициент сглаживания k (заданный для 60 к/с) → для кадра длиной dt мс
+const ease = (k, dt) => 1 - Math.pow(1 - k, clamp(dt, 1, 100) / 16.67);
 const call = (obj, method, ...args) => {
   try { return obj?.[method]?.(...args); } catch (_) { return undefined; }
 };
@@ -137,6 +139,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
   setupParty();
   setupTitle();
   setupScrolled();
+  setupLite();
 
   // ---------------------------------------------------------------- тексты карточки
   function fillStatic() {
@@ -215,20 +218,30 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     el.addEventListener("focus", () => {
       try { if (el.matches(":focus-visible")) call(audio, "tick"); } catch (_) { /* старые браузеры */ }
     });
+    // «магнит»: пишем стили не на каждый pointermove (у игровых мышей их сотни в секунду),
+    // а один раз за кадр, последнее положение
+    let nx = 0.5, ny = 0.5, magRaf = 0;
+    const applyMagnet = () => {
+      magRaf = 0;
+      if (!rect) return;
+      el.style.setProperty("--mx", ((nx - 0.5) * 8).toFixed(2) + "px");
+      el.style.setProperty("--my", ((ny - 0.5) * 6).toFixed(2) + "px");
+      el.style.setProperty("--px", (nx * 100).toFixed(1) + "%");
+      el.style.setProperty("--py", (ny * 100).toFixed(1) + "%");
+    };
     if (motion) {
       el.addEventListener("pointermove", (e) => {
-        if (e.pointerType !== "mouse") return;
+        if (e.pointerType !== "mouse" || root.classList.contains("lite")) return;
         if (!rect) rect = el.getBoundingClientRect();
-        const nx = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-        const ny = clamp((e.clientY - rect.top) / rect.height, 0, 1);
-        el.style.setProperty("--mx", ((nx - 0.5) * 8).toFixed(2) + "px");
-        el.style.setProperty("--my", ((ny - 0.5) * 6).toFixed(2) + "px");
-        el.style.setProperty("--px", (nx * 100).toFixed(1) + "%");
-        el.style.setProperty("--py", (ny * 100).toFixed(1) + "%");
-      });
+        if (!rect.width || !rect.height) return;
+        nx = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+        ny = clamp((e.clientY - rect.top) / rect.height, 0, 1);
+        if (!magRaf) magRaf = raf(applyMagnet);
+      }, { passive: true });
     }
     el.addEventListener("pointerleave", () => {
       rect = null;
+      if (magRaf) { cancelAnimationFrame(magRaf); magRaf = 0; }
       el.style.setProperty("--mx", "0px");
       el.style.setProperty("--my", "0px");
     });
@@ -327,6 +340,8 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       return;
     }
     const tryPlay = () => {
+      // src ставит скрипт в index.html (не ставит при экономии трафика) — без него play() бессмысленен
+      if (document.hidden || (!v.currentSrc && !v.getAttribute("src"))) return;
       try {
         const p = v.play();
         if (p && p.catch) p.catch(() => {});
@@ -334,9 +349,13 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     };
     // некоторые мобильные браузеры не стартуют autoplay сами — дожимаем при входе
     window.addEventListener("sempik:enter", tryPlay, { once: true });
+    // вкладка скрыта — видео на паузу (не декодируем кадры, которых никто не видит)
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && v.paused) tryPlay();
+      if (document.hidden) { try { v.pause(); } catch (_) { /* ок */ } }
+      else if (v.paused) tryPlay();
     });
+    // autoplay мог сработать, пока вкладка в фоне (src поставили по таймеру) — тоже на паузу
+    v.addEventListener("play", () => { if (document.hidden) { try { v.pause(); } catch (_) { /* ок */ } } });
   }
 
   // ---------------------------------------------------------------- заставка
@@ -464,20 +483,31 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     if (!lines.length) { wrap.remove(); return; }
     out.textContent = lines[0];
     if (sr) sr.textContent = lines[0];
+    // «призрак» держит высоту под самую длинную фразу — карточка не прыгает при переносах
+    const ghost = $(".tagline__ghost-text", wrap);
+    if (ghost) ghost.textContent = lines.reduce((a, b) => (Array.from(b).length > Array.from(a).length ? b : a), "");
     if (reduced) return;
 
+    // один текстовый узел, меняем только его data — без пересоздания узлов на каждую букву
+    const node = document.createTextNode("");
     out.textContent = "";
+    out.appendChild(node);
     let li = 0;
     let chars = Array.from(lines[0]);
     let n = 0;
     let deleting = false;
     let timer = 0;
+    // карточка уехала за экран (телефон) — не печатаем впустую
+    let onScreen = true;
+    if (typeof IntersectionObserver === "function") {
+      new IntersectionObserver((es) => { onScreen = es[es.length - 1].isIntersecting; }).observe(wrap);
+    }
 
     function step() {
-      if (document.hidden) { timer = setTimeout(step, 500); return; }
+      if (document.hidden || !onScreen) { timer = setTimeout(step, 400); return; }
       if (!deleting) {
         n++;
-        out.textContent = chars.slice(0, n).join("");
+        node.data = chars.slice(0, n).join("");
         wrap.classList.add("is-typing");
         if (n >= chars.length) {
           wrap.classList.remove("is-typing");
@@ -491,7 +521,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
         timer = setTimeout(step, 34 + Math.random() * 52 + extra);
       } else {
         n--;
-        out.textContent = chars.slice(0, n).join("");
+        node.data = chars.slice(0, n).join("");
         wrap.classList.add("is-typing");
         if (n <= 0) {
           wrap.classList.remove("is-typing");
@@ -626,15 +656,20 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     let gx = 0, gy = 0, cgx = 0, cgy = 0;
     let rect = null;
     let rafId = 0;
+    let last = 0;
 
-    function frame() {
+    function frame(t) {
       rafId = 0;
-      cgx += (gx - cgx) * 0.18;
-      cgy += (gy - cgy) * 0.18;
+      // сглаживание по времени, а не по кадрам: на 144 Гц блик не носится вдвое быстрее
+      const k = ease(0.18, t - (last || t - 16.7));
+      last = t;
+      cgx += (gx - cgx) * k;
+      cgy += (gy - cgy) * k;
       glare.style.transform = `translate3d(${cgx.toFixed(1)}px, ${cgy.toFixed(1)}px, 0)`;
       if (Math.abs(gx - cgx) > 0.5 || Math.abs(gy - cgy) > 0.5) rafId = raf(frame);
+      else last = 0;
     }
-    const kick = () => { if (!rafId) rafId = raf(frame); };
+    const kick = () => { if (!rafId && !document.hidden) rafId = raf(frame); };
 
     card.addEventListener("pointerenter", (e) => {
       if (e.pointerType !== "mouse") return;
@@ -680,19 +715,25 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     // над карточкой светлячок и лепестки не нужны — они мажут стекло и текст
     let overCard = false;
     let rafId = 0;
+    let last = 0;
 
-    function frame() {
+    // только transform в rAF: pointermove лишь запоминает координаты
+    function frame(t) {
       rafId = 0;
-      gx += (x - gx) * 0.22;
-      gy += (y - gy) * 0.22;
-      s += (ts - s) * 0.16;
+      const dt = t - (last || t - 16.7);
+      last = t;
+      const kp = ease(0.22, dt);
+      gx += (x - gx) * kp;
+      gy += (y - gy) * kp;
+      s += (ts - s) * ease(0.16, dt);
       glow.style.transform = `translate3d(${gx.toFixed(1)}px, ${gy.toFixed(1)}px, 0) scale(${s.toFixed(3)})`;
       if (Math.abs(x - gx) > 0.3 || Math.abs(y - gy) > 0.3 || Math.abs(ts - s) > 0.005) rafId = raf(frame);
+      else last = 0;
     }
     const kick = () => { if (!rafId && !document.hidden) rafId = raf(frame); };
 
     function spawn(px, py, vx, vy) {
-      if (!canAnimate) return;
+      if (!canAnimate || root.classList.contains("lite")) return;
       const p = pool.find((q) => !q.busy);
       if (!p) return;
       p.busy = true;
@@ -821,6 +862,47 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       });
       av.addEventListener("animationend", () => av.classList.remove("is-boop"));
     }
+  }
+
+  // ---------------------------------------------------------------- облегчённый режим
+  // Через пару секунд после входа меряем частоту кадров (≈2 с). Если меньше ~40 к/с — железо
+  // не тянет: ставим html.lite (CSS гасит бесконечные декоративные анимации, курсор без лепестков,
+  // кнопки без «магнита») и шлём событие sempik:lite для остальных модулей. Обратно не снимаем.
+  function setupLite() {
+    let tries = 0;
+    let timer = 0;
+    // счётчик смен видимости: пока вкладка скрыта, rAF стоит, и первый кадр после возврата
+    // выглядел бы как «кадр длиной в минуту» — такой замер выбрасываем и начинаем заново
+    let visGen = 0;
+    document.addEventListener("visibilitychange", () => { visGen++; });
+    const later = (ms) => { clearTimeout(timer); timer = setTimeout(probe, ms); };
+    function probe() {
+      if (root.classList.contains("lite")) return;
+      if (document.hidden) { later(3000); return; }
+      const gen = visGen;
+      const dts = [];
+      let sum = 0;
+      let last = 0;
+      const f = (t) => {
+        if (document.hidden || gen !== visGen) { later(3000); return; }
+        if (last) { const dt = t - last; dts.push(dt); sum += dt; }
+        last = t;
+        if (sum < 2000) { raf(f); return; }
+        // медиана, а не среднее: разовая заминка (компиляция шейдеров, догрузка 3D) не должна
+        // навсегда выключать красоту на нормальном железе
+        dts.sort((a, b) => a - b);
+        const med = dts[dts.length >> 1] || 1000;
+        const fps = 1000 / med;
+        if (fps < 40) {
+          root.classList.add("lite");
+          try { window.dispatchEvent(new CustomEvent("sempik:lite", { detail: { fps } })); } catch (_) { /* старый браузер */ }
+        } else if (++tries < 3) later(12000);
+      };
+      raf(f);
+    }
+    const start = () => later(2600);
+    if (root.classList.contains("entered")) start();
+    else window.addEventListener("sempik:enter", start, { once: true });
   }
 
   // ---------------------------------------------------------------- прокрутка (для затемнения под кнопками)

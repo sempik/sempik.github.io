@@ -78,6 +78,40 @@ const GLSL_RAINBOW = /* glsl */ `
 vec3 sk_rainbow(float h){ return clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0); }
 float sk_luma(vec3 c){ return dot(c, vec3(0.299,0.587,0.114)); }`;
 
+// Ч/б всей сцены без отдельного прохода постобработки: в каждый фрагментный шейдер (стандартные
+// материалы, спрайты, точки и свои ShaderMaterial — все они включают <colorspace_fragment>) сразу после
+// перевода в sRGB вставляется «яркость вместо цвета». skParty = 0 → строгий монохром, 1 → исходные
+// цвета + радуга (пасхалка «вечеринка»). Яркость считается от уже закодированного sRGB — как CSS grayscale().
+// Непрозрачным поверхностям (остров, крона, логотипы) — ещё мягкая S-кривая: без цвета объём держится
+// только на светотени, и кривая разводит тени в глубокий чёрный, а освещённое — в серебро.
+// Аддитивным свечениям кривая не нужна (их вклад суммируется, и она бы просто гасила слабое сияние).
+const GLSL_MONO = /* glsl */ `
+  {
+    float skL = clamp(dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+    #ifdef SK_MONO_CURVE
+      skL = mix(skL, skL * skL * (3.0 - 2.0 * skL), 0.5);
+    #endif
+    gl_FragColor.rgb = mix(vec3(skL), gl_FragColor.rgb, skParty);
+  }`;
+function monoMaterial(mat, uParty) {
+  if (!mat || mat.userData.skMono) return;
+  mat.userData.skMono = true;
+  const curve = !mat.transparent;
+  const prev = mat.onBeforeCompile;
+  const prevKey = mat.customProgramCacheKey;
+  mat.onBeforeCompile = function (sh, r) {
+    if (prev) prev.call(this, sh, r);
+    sh.uniforms.skParty = uParty;
+    const fs = sh.fragmentShader;
+    const inc = '#include <colorspace_fragment>';
+    sh.fragmentShader = (curve ? '#define SK_MONO_CURVE\n' : '') + 'uniform float skParty;\n' + (fs.includes(inc)
+      ? fs.replace(inc, inc + GLSL_MONO)
+      : fs.replace(/}\s*$/, GLSL_MONO + '\n}'));
+  };
+  // разные варианты вставки не должны делить одну скомпилированную программу
+  mat.customProgramCacheKey = function () { return prevKey.call(this) + (curve ? '|bwc' : '|bw'); };
+}
+
 // Подмешивает код в стандартный материал three.js (эмиссия, rim-свет, анимации).
 function patchMaterial(mat, key, { uniforms = {}, vertHead = '', vertBody = '', fragHead = '', fragBody = '' }) {
   mat.onBeforeCompile = (sh) => {
@@ -256,13 +290,19 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     return stub;
   }
 
+  // Потолок плотности пикселей холста. Холст на весь экран — главный расход GPU: DPR 2 на ретине даёт
+  // буфер 2880×1800 (5,2 Мпикс) против 2,9 Мпикс при 1.5, а на мягкой сцене с лепестками разница не видна.
+  const DPR_CAP = 1.5;
+  const baseDpr = () => Math.min(window.devicePixelRatio || 1, DPR_CAP);
+
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({
-      // MSAA только там, где буфер небольшой: на ретине (DPR 2 → буфер 2880×1800) он дорогой и почти незаметен,
-      // а на телефоне холст и так ограничен DPR 1.5
-      canvas, alpha: true, powerPreference: 'high-performance',
-      antialias: Math.min(window.devicePixelRatio || 1, innerWidth < 900 ? 1.5 : 2) < 1.75,
+      // MSAA только на экранах с DPR ~1 (обычные ноуты/мониторы): там без него «лесенки» заметны.
+      // При DPR ≥ 1.25 пиксели и так мелкие, а 4× MSAA на большом буфере — лишняя нагрузка (особенно телефоны)
+      canvas, alpha: true, powerPreference: 'high-performance', stencil: false,
+      // (на телефонах MSAA оставляем: тайловые мобильные GPU делают его почти бесплатно, а без него крона «зубчатая»)
+      antialias: baseDpr() < 1.25 || !!env.coarse || isMobile(),
     });
   } catch (e) {
     console.warn('[sempik] WebGL недоступен — 3D-сцена выключена', e);
@@ -283,7 +323,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   canvas.style.touchAction = 'pan-y pinch-zoom';
 
   const theme = Object.assign(
-    { pink: '#ff8cc6', hot: '#ff3d9a', violet: '#9b7bff', deep: '#2a1446', ink: '#f6f0ff' },
+    { pink: '#d4d4d4', hot: '#ffffff', violet: '#8a8a8a', deep: '#1a1a1a', ink: '#f2f2f2' },
     config.theme || {}
   );
   const links = (config.links || []).filter((l) => icons[l.id]);
@@ -295,9 +335,13 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   camera.position.copy(CAM_BASE);
   camera.lookAt(LOOK);
 
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  pmrem.dispose();
+  const makeEnv = () => {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const t = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    return t;
+  };
+  let envTex = makeEnv();
 
   const glowTex = makeGlowTexture();
   const makeGlow = (color, scale, opacity) => {
@@ -405,8 +449,10 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     return geo;
   })();
 
+  // матовые поверхности (камень, мох, кора, листва) — Lambert: при roughness ~0.9 блик PBR всё равно
+  // не виден, а освещение по 6 источникам выходит в разы дешевле на пиксель
   const islandMat = patchMaterial(
-    new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.92, metalness: 0.0 }),
+    new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
     'sk-island',
     {
       uniforms: {
@@ -421,21 +467,33 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       fragHead: 'varying vec3 vObjPos; varying vec3 vObjN; uniform float uTime; uniform float uParty; uniform vec3 uCrackA; uniform vec3 uCrackB; uniform vec3 uRimCol;' + GLSL_NOISE + GLSL_RAINBOW,
       fragBody: /* glsl */ `
         {
-          float n1 = snoise(vObjPos * 1.3 + vec3(3.1, 0.0, 1.7));
-          float n2 = snoise(vObjPos * 3.6 + vec3(7.3));
-          float patchy = smoothstep(-0.05, 0.45, snoise(vObjPos * 0.7 + vec3(1.0, 5.0, 2.0)));
-          float v = abs(n1 + n2 * 0.18);
-          float crack = 1.0 - smoothstep(0.0, 0.028, v);
-          float halo = (1.0 - smoothstep(0.0, 0.12, v)) * 0.18;
+          // светящиеся трещины: три вызова 3D-шума на пиксель — самое дорогое в сцене, поэтому считаем
+          // их только там, где трещины вообще могут быть (бока под кромкой, «пятна» patchy)
           float side = 1.0 - smoothstep(0.25, 0.7, vObjN.y);
           float below = smoothstep(-0.3, -0.75, vObjPos.y);
-          float pulse = 0.55 + 0.45 * sin(uTime * 0.9 + vObjPos.y * 2.2 + n1 * 2.0);
-          vec3 cc = mix(uCrackB, uCrackA, smoothstep(-1.8, -0.5, vObjPos.y));
-          cc = mix(cc, sk_rainbow(fract(vObjPos.y * 0.3 + uTime * 0.3)), uParty * 0.8);
-          totalEmissiveRadiance += cc * (crack + halo) * side * below * pulse * patchy * (1.25 + uParty);
+          float mask = side * below;
+          if (mask > 0.003) {
+            float patchy = smoothstep(-0.05, 0.45, snoise(vObjPos * 0.7 + vec3(1.0, 5.0, 2.0)));
+            if (patchy > 0.003) {
+              float n1 = snoise(vObjPos * 1.3 + vec3(3.1, 0.0, 1.7));
+              float n2 = snoise(vObjPos * 3.6 + vec3(7.3));
+              float v = abs(n1 + n2 * 0.18);
+              float crack = 1.0 - smoothstep(0.0, 0.028, v);
+              float halo = (1.0 - smoothstep(0.0, 0.12, v)) * 0.18;
+              float pulse = 0.55 + 0.45 * sin(uTime * 0.9 + vObjPos.y * 2.2 + n1 * 2.0);
+              vec3 cc = mix(uCrackB, uCrackA, smoothstep(-1.8, -0.5, vObjPos.y));
+              cc = mix(cc, sk_rainbow(fract(vObjPos.y * 0.3 + uTime * 0.3)), uParty * 0.8);
+              // в ч/б трещины ярче (2.1 вместо 1.25): без цвета им нужен контраст, чтобы читаться серебряными жилами
+              totalEmissiveRadiance += cc * (crack + halo) * mask * pulse * patchy * (2.1 + 0.15 * uParty);
+            }
+          }
           vec3 V = normalize(vViewPosition);
           float fres = pow(1.0 - clamp(abs(dot(normal, V)), 0.0, 1.0), 3.0);
-          totalEmissiveRadiance += uRimCol * fres * 0.35;
+          totalEmissiveRadiance += uRimCol * fres * (0.55 - 0.2 * uParty); // лунная кайма по силуэту
+          #ifdef USE_COLOR
+            // в ч/б тёмно-фиолетовый камень иначе сливается в сплошной чёрный — чуть подсвечиваем грани
+            totalEmissiveRadiance += vColor.rgb * 0.3 * (1.0 - uParty);
+          #endif
         }`,
     }
   );
@@ -622,7 +680,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     grow(new THREE.Vector3(0, -0.12, 0), new THREE.Vector3(0.08, 1, 0.04).normalize(), 1.1, 0.19, 0, rng() * TAU);
     trunk = new THREE.Mesh(
       mergeGeometries(parts),
-      new THREE.MeshStandardMaterial({ color: '#3a2438', roughness: 0.85, flatShading: true })
+      new THREE.MeshLambertMaterial({ color: '#3a2438', flatShading: true })
     );
     trunk.userData.kind = 'tree';
     treeGroup.add(trunk);
@@ -748,9 +806,9 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
             totalEmissiveRadiance += mix(uRimCol, diffuseColor.rgb * 1.6, 0.45) * fres * 0.6;
           }`,
     };
-    // матовая листва: без пластиковых бликов
+    // матовая листва: без пластиковых бликов (Lambert — сотни перекрывающихся инстансов, дешёвый свет важен)
     const mat = patchMaterial(
-      new THREE.MeshStandardMaterial({ flatShading: false, roughness: 0.82, metalness: 0 }),
+      new THREE.MeshLambertMaterial({ flatShading: false }),
       'sk-foliage',
       foliagePatch
     );
@@ -820,7 +878,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       fgeo.setIndex(idx);
       fgeo.computeVertexNormals();
       const fmat = patchMaterial(
-        new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.75, metalness: 0 }),
+        new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
         'sk-blossom',
         foliagePatch
       );
@@ -913,7 +971,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       add(new THREE.BoxGeometry(0.018, 0.1, 0.018), { x: sx * 0.052, y: 0.3, z: sz * 0.052 });
     }
     const lantern = new THREE.Group();
-    lantern.add(new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true })));
+    lantern.add(new THREE.Mesh(mergeGeometries(parts), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })));
     const fire = new THREE.Mesh(
       new THREE.BoxGeometry(0.085, 0.085, 0.085),
       new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc983').multiplyScalar(1.6), toneMapped: false })
@@ -942,15 +1000,17 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     fragmentShader: /* glsl */ `
       varying vec2 vUv; uniform float uTime; uniform float uParty; uniform float uOpacity; uniform vec3 uColA; uniform vec3 uColB;
       ${GLSL_RAINBOW}
+      float sk_g(float x){ return exp(-x * x); } // гаусс (pow(x, 2.0) с x < 0 в GLSL не определён)
       void main(){
         vec2 p = vUv * 2.0 - 1.0;
         float r = length(p);
+        if (r > 1.0) discard; // углы квадрата — пустые, не тратим на них смешивание
         float a = atan(p.y, p.x);
-        float ring = exp(-pow((r - 0.8) / 0.008, 2.0)) * 0.5;
-        float soft = exp(-pow((r - 0.8) / 0.09, 2.0)) * 0.12;
+        float ring = sk_g((r - 0.8) / 0.008) * 0.5;
+        float soft = sk_g((r - 0.8) / 0.09) * 0.12;
         float fill = smoothstep(0.82, 0.0, r) * 0.05;
-        float outer = exp(-pow((r - 0.93) / 0.004, 2.0)) * 0.3 * (0.35 + 0.65 * sin(a * 2.0 - uTime * 0.35));
-        float ticks = step(0.6, fract(a / 6.2831853 * 120.0 + uTime * 0.02)) * exp(-pow((r - 0.87) / 0.006, 2.0)) * 0.1;
+        float outer = sk_g((r - 0.93) / 0.004) * 0.3 * (0.35 + 0.65 * sin(a * 2.0 - uTime * 0.35));
+        float ticks = step(0.6, fract(a / 6.2831853 * 120.0 + uTime * 0.02)) * sk_g((r - 0.87) / 0.006) * 0.1;
         float fadeLow = 0.55 + 0.45 * smoothstep(-0.9, 0.4, p.y);
         ring *= fadeLow; soft *= fadeLow; outer *= fadeLow; ticks *= fadeLow;
         vec3 col = mix(uColA, uColB, 0.5 + 0.5 * sin(a + uTime * 0.25));
@@ -974,14 +1034,17 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     fragmentShader: /* glsl */ `
       varying vec2 vUv; uniform float uTime; uniform float uParty; uniform float uOpacity; uniform vec3 uCol; uniform vec3 uCol2;
       ${GLSL_RAINBOW}
+      float sk_g(float x){ return exp(-x * x); }
       void main(){
         vec2 p = vUv * 2.0 - 1.0;
         float r = length(p);
+        // кольца лежат в полосе r ∈ [0.45, 1]: середину и углы квадрата не смешиваем вовсе
+        if (r > 1.0 || r < 0.45) discard;
         float a = atan(p.y, p.x);
-        float r1 = exp(-pow((r - 0.92) / 0.01, 2.0));
-        float r2 = exp(-pow((r - 0.8) / 0.006, 2.0)) * 0.6;
-        float dash = step(0.5, fract(a / 6.2831853 * 48.0 - uTime * 0.05)) * exp(-pow((r - 0.86) / 0.012, 2.0)) * 0.35;
-        float glow = exp(-pow((r - 0.86) / 0.12, 2.0)) * 0.12;
+        float r1 = sk_g((r - 0.92) / 0.01);
+        float r2 = sk_g((r - 0.8) / 0.006) * 0.6;
+        float dash = step(0.5, fract(a / 6.2831853 * 48.0 - uTime * 0.05)) * sk_g((r - 0.86) / 0.012) * 0.35;
+        float glow = sk_g((r - 0.86) / 0.12) * 0.12;
         vec3 col = mix(uCol, uCol2, 0.5 + 0.5 * sin(a * 2.0 + uTime * 0.4));
         col = mix(col, sk_rainbow(fract(a / 6.2831853 - uTime * 0.25)), uParty * 0.9);
         float v = (r1 + r2 + dash + glow) * uOpacity * smoothstep(1.0, 0.97, r);
@@ -1329,16 +1392,21 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   scene.add(sparks);
 
   const tmpCol = new THREE.Color();
+  const sparkCol = new THREE.Color();
+  const sparkDir = new THREE.Vector3();
+  const WHITE = new THREE.Color('#ffffff');
   function emitSparks(at, color, count, speed = 1.6) {
-    const c = new THREE.Color(color);
+    const c = sparkCol.set(color);
     for (let k = 0; k < count; k++) {
       const i = spark.next;
       spark.next = (spark.next + 1) % SPARK_N;
-      const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+      const dir = sparkDir.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+      if (dir.lengthSq() < 1e-6) dir.set(0, 1, 0);
+      dir.normalize();
       const sp = speed * (0.35 + Math.random() * 0.75);
       spark.pos[i * 3] = at.x; spark.pos[i * 3 + 1] = at.y; spark.pos[i * 3 + 2] = at.z;
       spark.vel[i * 3] = dir.x * sp; spark.vel[i * 3 + 1] = dir.y * sp + 0.3; spark.vel[i * 3 + 2] = dir.z * sp;
-      tmpCol.copy(c).lerp(new THREE.Color('#ffffff'), Math.random() * 0.6);
+      tmpCol.copy(c).lerp(WHITE, Math.random() * 0.6);
       spark.col[i * 3] = tmpCol.r; spark.col[i * 3 + 1] = tmpCol.g; spark.col[i * 3 + 2] = tmpCol.b;
       spark.max[i] = spark.life[i] = 0.6 + Math.random() * 0.8;
       spark.size[i] = 0.05 + Math.random() * 0.07;
@@ -1385,8 +1453,15 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     p.s = 0.11 + Math.random() * 0.07;
   }
   const burstState = [];
-  for (let i = 0; i < BURST_N; i++) burstState.push({ on: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wx: 0, wy: 0, s: 0, life: 0, ph: 0 });
+  {
+    const z = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (let i = 0; i < BURST_N; i++) {
+      burstState.push({ on: false, dirty: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, rz: 0, wx: 0, wy: 0, s: 0, life: 0, ph: 0 });
+      burst.setMatrixAt(i, z); // InstancedMesh стартует с единичных матриц — иначе кадр прогрева рисует их в центре
+    }
+  }
   let burstNext = 0;
+  let burstLive = false;
 
   // ------------------------------------------------------------ layout
   const lay = { s: 1, cx: 0.68, cy: 0.5, ts: 1, tcx: 0.68, tcy: 0.5, w: 1, h: 1, ppw: 1, k: 1, ready: false };
@@ -1446,12 +1521,17 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
 
   let pxScale = 600;
   let pixelCap = Infinity; // потолок DPR от «губернатора» кадров
+  // прямоугольник холста кэшируем здесь: getBoundingClientRect на каждый pointermove мог форсить layout
+  const canvasRect = { left: 0, top: 0, width: 1, height: 1 };
   function resize() {
     const w = Math.max(1, canvas.clientWidth || innerWidth);
     const h = Math.max(1, canvas.clientHeight || innerHeight);
-    const dpr = Math.min(window.devicePixelRatio || 1, w < 900 ? 1.5 : 2, pixelCap);
-    renderer.setPixelRatio(dpr);
+    const dpr = Math.min(baseDpr(), pixelCap);
+    if (Math.abs(renderer.getPixelRatio() - dpr) > 1e-3) renderer.setPixelRatio(dpr);
     renderer.setSize(w, h, false);
+    const r = canvas.getBoundingClientRect();
+    canvasRect.left = r.left; canvasRect.top = r.top;
+    canvasRect.width = r.width || w; canvasRect.height = r.height || h;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     computeLayout();
@@ -1483,15 +1563,21 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   let overTree = false;
   let shakeT = 10;
   const pointer = { tx: 0, ty: 0, x: 0, y: 0, has: false };
-  const drag = { down: false, id: -1, x: 0, lastX: 0, moved: 0, vel: 0, lastT: 0, suppressClick: false };
+  const drag = { down: false, id: -1, x: 0, lastX: 0, moved: 0, vel: 0, lastT: 0, suppressClick: false, type: 'mouse' };
 
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   const anchorCam = new THREE.PerspectiveCamera();
-  const treeProxies = [islandMesh];
+  const treeProxies = [];
   {
-    // невидимые «хитбоксы»: крона-эллипсоид + ствол — дешевле, чем рейкаст по сотням инстансов
+    // невидимые «хитбоксы»: крона-эллипсоид + ствол + конус острова — дешевле, чем рейкаст по сотням
+    // инстансов и ~20 тыс. треугольников самого острова (раньше это считалось на каждый pointermove)
     const inv = new THREE.MeshBasicMaterial({ visible: false });
+    const islandProxy = new THREE.Mesh(new THREE.CylinderGeometry(R_TOP * 1.02, 0.18, H_ISLAND + 0.2, 14, 1), inv);
+    islandProxy.position.y = (0.2 - H_ISLAND) / 2;
+    islandProxy.userData.kind = 'tree';
+    spin.add(islandProxy);
+    treeProxies.push(islandProxy);
     const crown = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), inv);
     const tb = new THREE.Box3();
     for (const t of tips) tb.expandByPoint(t.p);
@@ -1510,7 +1596,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
 
   function pick(clientX, clientY) {
     if (!revealed || revealT < 0.9) return null;
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRect;
     ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
     const hits = raycaster.intersectObjects(pickables, false);
@@ -1524,8 +1610,10 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     return null;
   }
 
+  let cursorNow = '';
   function setCursor() {
-    canvas.style.cursor = drag.down && drag.moved > 5 ? 'grabbing' : hovered >= 0 || overTree ? 'pointer' : '';
+    const c = drag.down && drag.moved > 5 ? 'grabbing' : hovered >= 0 || overTree ? 'pointer' : '';
+    if (c !== cursorNow) { cursorNow = c; canvas.style.cursor = c; }
   }
 
   function onPointerMove(e) {
@@ -1538,6 +1626,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   window.addEventListener('pointermove', onPointerMove, { passive: true });
 
   canvas.addEventListener('pointerdown', (e) => {
+    drag.type = e.pointerType || 'mouse';
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     drag.down = true; drag.id = e.pointerId; drag.x = drag.lastX = e.clientX; drag.moved = 0; drag.vel = 0;
     drag.lastT = performance.now();
@@ -1563,7 +1652,15 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       return;
     }
     if (e.pointerType !== 'mouse') return;
-    const hit = pick(e.clientX, e.clientY);
+    // рейкаст — не на каждое событие (мыши шлют до 1000 Гц), а раз в кадр, по последней позиции
+    hoverReq.x = e.clientX; hoverReq.y = e.clientY; hoverReq.on = true;
+  });
+  const hoverReq = { x: 0, y: 0, on: false };
+  function updateHover() {
+    if (!hoverReq.on) return;
+    hoverReq.on = false;
+    if (drag.down) return;
+    const hit = pick(hoverReq.x, hoverReq.y);
     const idx = hit?.kind === 'logo' ? hit.L.i : -1;
     if (idx !== hovered) {
       if (idx >= 0) { logos[idx].spinT = 0; sfx('tick'); }
@@ -1571,7 +1668,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     }
     overTree = hit?.kind === 'tree';
     setCursor();
-  });
+  }
   const endDrag = (e) => {
     if (!drag.down || (e && e.pointerId !== drag.id)) return;
     drag.down = false;
@@ -1581,7 +1678,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   };
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
-  canvas.addEventListener('pointerleave', () => { if (!drag.down) { hovered = -1; overTree = false; setCursor(); } });
+  canvas.addEventListener('pointerleave', () => { if (!drag.down) { hoverReq.on = false; hovered = -1; overTree = false; setCursor(); } });
 
   const tmpV = new THREE.Vector3();
   canvas.addEventListener('click', (e) => {
@@ -1591,7 +1688,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     if (hit.kind === 'logo') {
       const L = hit.L;
       L.pulse = 1;
-      if (e.pointerType !== 'mouse') { hovered = L.i; L.spinT = 0; setTimeout(() => { if (hovered === L.i) hovered = -1; }, 900); }
+      // pointerType у click есть не везде (Safari отдаёт MouseEvent) — берём тип из pointerdown
+      if ((e.pointerType || drag.type) !== 'mouse') { hovered = L.i; L.spinT = 0; setTimeout(() => { if (hovered === L.i) hovered = -1; }, 900); }
       L.group.getWorldPosition(tmpV);
       emitSparks(tmpV, L.accent || theme.pink, 46, 1.9);
       sfx('pop');
@@ -1627,10 +1725,13 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       b.wx = (Math.random() - 0.5) * 6; b.wy = (Math.random() - 0.5) * 5;
       b.s = 0.11 + Math.random() * 0.06; b.life = 0; b.ph = Math.random() * TAU;
     }
+    burstLive = true;
     emitSparks(center, theme.pink, 22, 1.2);
   }
 
   window.addEventListener('sempik:party', (e) => { party = !!e?.detail?.on; });
+  // вечеринку могли включить до того, как догрузилась сцена (three.js тяжёлый) — подхватываем по классу
+  party = document.documentElement.classList.contains('party');
 
   // ------------------------------------------------------------ frame update
   const m4 = new THREE.Matrix4();
@@ -1655,8 +1756,10 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     camera.lookAt(LOOK);
     camera.updateMatrixWorld();
     updateRays();
+    updateHover();
 
     partyK = damp(partyK, party ? 1 : 0, 2.5, dt);
+    if (!party && partyK < 1e-4) partyK = 0; // ровно 0 → строгий ч/б без «хвоста» цвета
     U.uParty.value = partyK;
     {
       const hu = petalMat.uniforms.uHero.value;
@@ -1759,12 +1862,13 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     }
     petals.instanceMatrix.needsUpdate = true;
 
-    // burst petals
+    // burst petals (пока их нет — ни циклов, ни загрузки матриц в GPU каждый кадр)
     let anyBurst = false;
-    for (let i = 0; i < BURST_N; i++) {
+    if (burstLive) for (let i = 0; i < BURST_N; i++) {
       const b = burstState[i];
-      if (!b.on) { sv.setScalar(0); m4.makeScale(0, 0, 0); burst.setMatrixAt(i, m4); continue; }
+      if (!b.on) { if (b.dirty) { b.dirty = false; m4.makeScale(0, 0, 0); burst.setMatrixAt(i, m4); } continue; }
       anyBurst = true;
+      b.dirty = true;
       b.life += dt;
       const drag2 = Math.exp(-dt * 1.4);
       b.vx = b.vx * drag2 + wind * 0.5 * dt * 1.4;
@@ -1785,7 +1889,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       m4.compose(pv, q4, sv);
       burst.setMatrixAt(i, m4);
     }
-    burst.instanceMatrix.needsUpdate = true;
+    if (burstLive) burst.instanceMatrix.needsUpdate = true;
+    burstLive = anyBurst;
     burst.visible = anyBurst;
 
     // sparks
@@ -1814,10 +1919,21 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
 
   // ------------------------------------------------------------ loop
   let raf = 0;
-  let last = 0;
   let running = false;
   let errors = 0;
   let firstFrame = true;
+
+  // ч/б для всех материалов сцены (до прогрева шейдеров, чтобы не компилировать дважды) +
+  // список материалов с картой окружения — её надо пересобрать после потери WebGL-контекста
+  const envMats = [];
+  scene.traverse((o) => {
+    const m = o.material;
+    if (!m) return;
+    for (const x of Array.isArray(m) ? m : [m]) {
+      monoMaterial(x, U.uParty);
+      if (x.envMap && x.envMap === envTex) envMats.push(x);
+    }
+  });
 
   // Прогрев шейдеров: compileAsync компилирует программы в фоне (KHR_parallel_shader_compile),
   // а не одним длинным блокирующим кадром. Герой на время компиляции «видим», чтобы учлись его
@@ -1836,41 +1952,134 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   } catch (_) { warmDone(); }
   setTimeout(warmDone, 5000);
 
-  // «Губернатор» кадров: если долго не тянем ~45 fps — снижаем разрешение (2 → 1.5 → 1) и число лепестков
-  const gov = { ema: 16, slowT: 0, wait: 4, level: 0 };
-  function govern(rawMs, dt) {
-    if (!revealed || reduced) return;
-    if (rawMs > 250) return; // вкладка подвисла/спала — не считается
-    gov.ema = gov.ema * 0.92 + rawMs * 0.08;
+  // «Губернатор» кадров. Смотрит на интервал между отрисованными кадрами (EMA):
+  //  • дольше 1.5 с медленнее ~48 fps → на ступень ниже плотность пикселей (1.5 → 1.25 → 1 → 0.85 → 0.75),
+  //    при совсем плохих кадрах (<25 fps) — сразу на две; когда пиксели кончились — меньше лепестков;
+  //  • если два шага подряд ничего не дали (упор не в GPU, или браузер сам режет rAF до 30 Гц
+  //    в режиме энергосбережения) — откатывает их и больше не вмешивается;
+  //  • 10 с стабильных 60 fps → пробует ступень выше; если на ней снова тормозит — запоминает потолок.
+  const DPR_STEPS = [1.25, 1, 0.85, 0.75];
+  const PETAL_STEPS = [0.6, 0.36];
+  const gov = { ema: 16.7, slowT: 0, fastT: 0, wait: 4, level: 0, floor: 0, probe: 0, check: false, before: 0, from: 0, revertTo: 0, noGain: 0, locked: false };
+  // ступени зависят только от DPR экрана — кэшируем, чтобы govern() не создавал массивы на каждом кадре
+  let stepsFor = -1, stepsArr = [];
+  const govSteps = () => {
+    const b = baseDpr();
+    if (b !== stepsFor) { stepsFor = b; stepsArr = [b, ...DPR_STEPS.filter((s) => s < b - 0.05)]; }
+    return stepsArr;
+  };
+  function setLevel(l) {
+    const st = govSteps();
+    const max = st.length - 1 + PETAL_STEPS.length;
+    gov.level = Math.max(0, Math.min(max, l));
+    pixelCap = gov.level === 0 ? Infinity : st[Math.min(gov.level, st.length - 1)];
+    const pi = gov.level - (st.length - 1);
+    petalMul = pi > 0 ? PETAL_STEPS[pi - 1] : 1;
+    resize();
+  }
+  function govern(ms, dt) {
+    if (!revealed || ms > 250) return; // вкладка подвисла/спала — не считается
+    gov.ema += (ms - gov.ema) * 0.08;
+    if (gov.locked) return;
     if (gov.wait > 0) { gov.wait -= dt; return; }
-    gov.slowT = gov.ema > 22 ? gov.slowT + dt : 0;
-    if (gov.slowT < 2.5) return;
-    gov.slowT = 0;
-    gov.wait = 3;
-    const cur = renderer.getPixelRatio();
-    if (cur > 1.01) {
-      pixelCap = Math.max(1, cur - 0.5);
-      resize();
-    } else if (petalMul > 0.45) {
-      petalMul *= 0.6;
-      resize();
-    } else {
-      gov.wait = Infinity; // дальше не трогаем
+    const maxLevel = govSteps().length - 1 + PETAL_STEPS.length;
+    if (gov.check) {
+      // помог ли прошлый шаг вниз?
+      gov.check = false;
+      if (gov.ema < gov.before * 0.93) gov.noGain = 0;
+      else {
+        if (gov.noGain === 0) gov.revertTo = gov.from;
+        if (++gov.noGain >= 2) {
+          setLevel(gov.revertTo);
+          gov.locked = true;
+          return;
+        }
+      }
     }
-    gov.level++;
+    if (gov.probe > 0) gov.probe -= dt;
+    // пороги — в долях целевого интервала кадра (16.7 мс при 60 fps, 33.3 при 30)
+    gov.slowT = gov.ema > FRAME_MS * 1.26 ? gov.slowT + dt : 0;
+    gov.fastT = gov.ema < FRAME_MS * 1.06 ? gov.fastT + dt : 0;
+    if (gov.slowT > 1.5 && gov.level < maxLevel) {
+      if (gov.probe > 0) gov.floor = gov.level + 1; // проба вверх не удалась — выше не лезем
+      gov.before = gov.ema;
+      gov.from = gov.level;
+      gov.check = gov.probe <= 0;
+      gov.probe = 0;
+      setLevel(gov.level + (gov.ema > FRAME_MS * 2.4 ? 2 : 1));
+      gov.slowT = 0; gov.fastT = 0; gov.wait = 2.5;
+    } else if (gov.fastT > 10 && gov.level > gov.floor) {
+      setLevel(gov.level - 1);
+      gov.noGain = 0;
+      gov.probe = 6;
+      gov.slowT = 0; gov.fastT = 0; gov.wait = 1;
+    }
+  }
+
+  // Кап частоты кадров: на 120/144 Гц мониторах rAF приходит чаще, а сцена тяжёлая. Рисуем на каждом
+  // N-м такте развёртки (N — целое), чтобы кадры шли РОВНО: 120 Гц → 60, 144 Гц → 72, 165 Гц → 55,
+  // 240 Гц → 60. Дробный кап «в среднем 60» на 75/144 Гц даёт рваный ритм 1-1-1-1-2 / 2-3-2-3, который
+  // глаз видит как подлагивание. На 60–90 Гц кап не нужен — рисуем каждый такт.
+  // При prefers-reduced-motion движения почти нет (остров не крутится, лепестки втрое медленнее) — ~30 fps.
+  const FRAME_MS = 1000 / (reduced ? 30 : 60);
+  let vsMs = 1000 / 60; // оценка периода развёртки (по «пустым» тактам, пропущенные такты не учитываются)
+  let lastRaf = 0;
+  let lastDraw = 0;
+
+  // Телефон: холст fixed, а карточка при прокрутке наезжает на остров. Когда она целиком закрывает
+  // героя (остров, орбиты логотипов, гало), видны только лепестки по краям и сквозь стекло карточки —
+  // рисуем ~20 к/с вместо 60. Совсем не останавливаемся: застывшие лепестки по краям были бы заметны.
+  // Прокрутили назад — на следующем же такте снова полная частота (проверка на каждый scroll).
+  const cardEl = document.querySelector('.card');
+  const OCC_MS = 50;
+  let occluded = false;
+  let occDirty = true;
+  let occAt = 0;
+  let govSkip = false;
+  const markOcc = () => { occDirty = true; };
+  window.addEventListener('scroll', markOcc, { passive: true });
+  window.addEventListener('resize', markOcc, { passive: true });
+  if (cardEl && typeof ResizeObserver !== 'undefined') new ResizeObserver(markOcc).observe(cardEl);
+  function checkOcclusion(now) {
+    occDirty = false;
+    occAt = now;
+    let next = false;
+    // revealT > 2: карточка успела проявиться (до этого она полупрозрачная и остров сквозь неё видно)
+    if (cardEl && revealed && revealT > 2 && lay.w < 900) {
+      const r = cardEl.getBoundingClientRect();
+      const k = lay.k;
+      const cx = canvasRect.left + lay.tcx * lay.w;
+      const cy = canvasRect.top + lay.tcy * lay.h;
+      const pad = 0.08 * HERO.w * k; // запас на покачивание и свечение логотипов
+      const hw = (HERO.w / 2) * k + pad;
+      const hh = (HERO.h / 2) * k + pad;
+      next = r.width > 0 && r.left <= cx - hw && r.right >= cx + hw && r.top <= cy - hh && r.bottom >= cy + hh;
+    }
+    occluded = next;
   }
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
-    const rawMs = last ? now - last : 16;
-    const dt = last ? Math.min(0.05, Math.max(0, rawMs / 1000)) : 1 / 60;
-    last = now;
+    if (lastRaf) {
+      const d = now - lastRaf;
+      if (d > 3 && d < vsMs * 1.5) vsMs += (d - vsMs) * 0.05;
+    }
+    lastRaf = now;
+    if (occDirty || now - occAt > 500) checkOcclusion(now);
+    const every = Math.max(1, Math.floor((occluded ? OCC_MS : FRAME_MS) / vsMs + 0.35));
+    if (lastDraw && now - lastDraw < (every - 0.5) * vsMs) return;
+    const ms = lastDraw ? now - lastDraw : FRAME_MS;
+    const dt = Math.min(0.05, Math.max(0, ms / 1000));
+    lastDraw = now;
     // пока шейдеры компилируются в фоне, а заставка закрывает экран — не рисуем
     if (!warm && !revealed) return;
     // пока непрозрачная заставка закрывает экран, сцену всё равно не видно — после кадра прогрева
     // не рисуем, чтобы заставка и её «дырка» на входе шли плавно (особенно на слабых видеокартах)
     if (!firstFrame && !revealed && document.getElementById('splash')) return;
-    govern(rawMs, dt);
+    // редкие кадры под карточкой (и первый кадр после них) — не повод «губернатору» снижать качество
+    if (occluded) govSkip = true;
+    else if (govSkip) govSkip = false;
+    else govern(ms, dt);
     try {
       update(dt);
       if (firstFrame) {
@@ -1886,22 +2095,45 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       renderer.render(scene, camera);
     } catch (e) {
       if (++errors <= 1) console.error('[sempik] scene3d frame', e);
-      if (errors > 30) stop();
+      if (errors > 30) { dead = true; sync(); }
     }
   }
   function start() {
     if (running) return;
     running = true;
-    last = 0;
+    lastRaf = 0;
+    lastDraw = 0;
     raf = requestAnimationFrame(frame);
   }
   function stop() {
     running = false;
     cancelAnimationFrame(raf);
   }
-  document.addEventListener('visibilitychange', () => (document.hidden ? stop() : start()));
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); stop(); });
-  canvas.addEventListener('webglcontextrestored', () => start());
+  // рисуем, только когда это кому-то видно: вкладка активна, холст на экране, контекст жив
+  let inView = true;
+  let lost = false;
+  let dead = false;
+  function sync() {
+    if (!document.hidden && inView && !lost && !dead) start(); else stop();
+  }
+  document.addEventListener('visibilitychange', sync);
+  if (typeof IntersectionObserver !== 'undefined') {
+    new IntersectionObserver((entries) => {
+      inView = entries[entries.length - 1].isIntersecting;
+      sync();
+    }).observe(canvas);
+  }
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; sync(); });
+  canvas.addEventListener('webglcontextrestored', () => {
+    // three.js сам перезаливает геометрию и текстуры, а вот карта окружения (PMREM) — это содержимое
+    // render target'а, оно пропадает вместе с контекстом: пересобираем, иначе металл/кристаллы чёрные
+    try {
+      envTex = makeEnv();
+      for (const m of envMats) m.envMap = envTex;
+    } catch (_) { /* без отражений, но живое */ }
+    lost = false;
+    sync();
+  });
 
   let resizeQueued = false;
   const queueResize = () => {
@@ -1911,8 +2143,16 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   };
   window.addEventListener('resize', queueResize);
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(queueResize).observe(canvas);
+  // смена плотности пикселей без resize (окно переехало на другой монитор)
+  const watchDpr = () => {
+    try {
+      matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+        .addEventListener('change', () => { queueResize(); watchDpr(); }, { once: true });
+    } catch (_) { /* старый браузер */ }
+  };
+  watchDpr();
 
-  if (!document.hidden) start();
+  sync();
 
   return {
     // отладка/тесты: экранные координаты логотипов и кроны
@@ -1928,7 +2168,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
         tree: toScreen(treeGroup, canopyCenter),
         hovered,
         hero: heroRect(),
-        gov: { level: gov.level, ema: gov.ema, dpr: renderer.getPixelRatio(), petals: petals.count },
+        gov: { level: gov.level, floor: gov.floor, locked: gov.locked, ema: gov.ema, vsync: vsMs, dpr: renderer.getPixelRatio(), petals: petals.count, occluded },
         info: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles },
       };
     },

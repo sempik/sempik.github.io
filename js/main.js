@@ -119,14 +119,18 @@ Promise.allSettled([pScene, pCat]).then(() => {
 
 // Фон: в ролике есть кольцо-«затмение» (центр в 69.5% / 45% кадра 1920x1080, см. tools/motion-bg).
 // Ставим его ровно за гало 3D-острова, чтобы кольца были концентричны на любом экране.
+// Пересчёт только на resize/поворот (через rAF), не каждый кадр; одинаковый результат не пишем —
+// на телефонах resize сыплется при каждом показе/скрытии адресной строки.
 const VIDEO = { w: 1920, h: 1080, cx: 0.695 * 1920, cy: 0.45 * 1080 };
+let lastBackdrop = "";
 function alignBackdrop() {
   const v = document.getElementById("bg-video");
   const box = v?.parentElement;
-  const a = safe("scene.anchor", () => scene?.anchor?.());
   if (!v || !box) return;
+  const a = safe("scene.anchor", () => scene?.anchor?.());
   if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.y)) {
-    v.removeAttribute("style");
+    if (lastBackdrop) v.removeAttribute("style");
+    lastBackdrop = "";
     return;
   }
   const W = box.clientWidth || innerWidth;
@@ -147,6 +151,9 @@ function alignBackdrop() {
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
   const left = clamp(a.x - VIDEO.cx * s, W - w, 0);
   const top = clamp(a.y - VIDEO.cy * s, H - h, 0);
+  const key = `${left.toFixed(1)}|${top.toFixed(1)}|${w.toFixed(1)}|${h.toFixed(1)}`;
+  if (key === lastBackdrop) return;
+  lastBackdrop = key;
   Object.assign(v.style, {
     inset: "auto",
     left: `${left.toFixed(1)}px`,

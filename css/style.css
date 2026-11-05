@@ -1,22 +1,37 @@
 /* =========================================================================
-   sempik — визитка. Ночная сакура × неон.
-   Слои (снизу вверх): видео/затемнение/зерно (0) → 3D (1) → карточка (2)
+   sempik — визитка. Ночная сакура при лунном свете: чёрный, серебро, белый.
+   Слои (снизу вверх): видео + затемнение/зерно (0) → 3D (1) → карточка (2)
    → кот (5) → кнопки (80) → тост (90) → заставка (100) → курсор (110)
+
+   Цвет живёт только в режиме вечеринки (html.party, Konami-код): там переменные
+   ниже подменяются цветными (см. раздел 8). Вне вечеринки всё строго R=G=B.
+
+   Производительность: никаких backdrop-filter (поверх видео и 3D он пересчитывается
+   каждый кадр), filter: blur — только на статичном, бесконечные анимации — только
+   transform/opacity и только там, где их видно.
    ========================================================================= */
 
 :root {
-  --bg: #07050c;
-  --ink: #f6f0ff;
-  --muted: #a79cbd;
-  --pink: #ff8cc6;
-  --hot: #ff3d9a;
-  --violet: #9b7bff;
-  --deep: #2a1446;
-  --cyan: #6fdcff;
+  --bg: #070707;
+  --ink: #f2f2f2;
+  --muted: #9b9b9b;
+  --pink: #d4d4d4;   /* светлый акцент */
+  --hot: #ffffff;    /* сильный акцент */
+  --violet: #8a8a8a; /* средний */
+  --deep: #1a1a1a;   /* тёмный */
+  --cyan: #6e6e6e;   /* второй слой глитча */
 
-  --ink-2: rgba(246, 240, 255, 0.76);
+  /* rgb-тройки для rgba(): свечения, стекло, затемнения. В вечеринке становятся цветными */
+  --c-glow: 255, 255, 255;  /* сильное свечение */
+  --c-tint: 214, 214, 214;  /* светлая обводка */
+  --c-cool: 138, 138, 138;  /* средний тон */
+  --c-base: 11, 11, 11;     /* стекло карточки/кнопок */
+  --c-shade: 7, 7, 7;       /* затемнение фона */
+  --c-on: 44, 44, 44;       /* нажатая кнопка */
+
+  --ink-2: rgba(242, 242, 242, 0.76);
   --line: rgba(255, 255, 255, 0.085);
-  --glass: rgba(14, 8, 26, 0.56);
+  --glass: rgba(var(--c-base), 0.86);
 
   --f-display: "Unbounded", "Manrope", system-ui, sans-serif;
   --f-body: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -29,20 +44,26 @@
   --gutter: 16px;
   --radius: 28px;
 
-  /* «хром» — круглые стеклянные кнопки поверх всего (звук/музыка справа, игрушки кота слева).
-     cat.js берёт те же переменные, чтобы все кнопки выглядели одним набором */
+  /* статичное плёночное зерно: альфа уже «вшита» в шум, поэтому это просто ещё один фон
+     у затемнения (раньше — отдельный анимированный слой на весь экран) */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  .25 0 0 0 -.13'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") 0 0 / 200px 200px;
+
+  /* «хром» — круглые кнопки поверх всего (звук/музыка справа, игрушки кота слева).
+     cat.js берёт те же переменные, чтобы все кнопки выглядели одним набором.
+     --chrome-blur: none — размытие фона под кнопками каждый кадр слишком дорогое,
+     вместо него плотная подложка */
   --chrome-size: 44px;
   --chrome-edge: 16px;
-  --chrome-bg: radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 55%), rgba(18, 10, 32, 0.55);
-  --chrome-bg-on: radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 55%), rgba(64, 14, 52, 0.62);
-  --chrome-border: rgba(255, 255, 255, 0.13);
-  --chrome-border-hi: rgba(255, 140, 198, 0.6);
-  --chrome-blur: blur(14px) saturate(150%);
-  --chrome-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 26px -8px rgba(0, 0, 0, 0.6);
-  --chrome-shadow-hi: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 12px 28px -8px rgba(0, 0, 0, 0.6), 0 0 24px -4px rgba(255, 61, 154, 0.5);
-  --chrome-shadow-on: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 0 14px rgba(255, 61, 154, 0.22), 0 10px 26px -8px rgba(0, 0, 0, 0.6), 0 0 26px -4px rgba(255, 61, 154, 0.55);
-  --tip-bg: rgba(18, 10, 32, 0.86);
-  --tip-border: rgba(255, 140, 198, 0.3);
+  --chrome-bg: radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0) 55%), rgba(var(--c-base), 0.8);
+  --chrome-bg-on: radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 55%), rgba(var(--c-on), 0.86);
+  --chrome-border: rgba(255, 255, 255, 0.14);
+  --chrome-border-hi: rgba(var(--c-tint), 0.62);
+  --chrome-blur: none;
+  --chrome-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 26px -8px rgba(0, 0, 0, 0.7);
+  --chrome-shadow-hi: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 12px 28px -8px rgba(0, 0, 0, 0.7), 0 0 24px -4px rgba(var(--c-glow), 0.34);
+  --chrome-shadow-on: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 14px rgba(var(--c-glow), 0.12), 0 10px 26px -8px rgba(0, 0, 0, 0.7), 0 0 26px -4px rgba(var(--c-glow), 0.4);
+  --tip-bg: rgba(var(--c-base), 0.94);
+  --tip-border: rgba(var(--c-tint), 0.3);
   color-scheme: dark;
 }
 
@@ -54,7 +75,7 @@ html {
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  scrollbar-color: rgba(255, 140, 198, 0.35) transparent;
+  scrollbar-color: rgba(var(--c-tint), 0.32) transparent;
   scrollbar-width: thin;
 }
 
@@ -76,7 +97,7 @@ body {
 /* пока висит заставка — страница не скроллится */
 html.js:not(.entered) body { overflow: hidden; }
 
-::selection { background: rgba(255, 61, 154, 0.38); color: #fff; }
+::selection { background: rgba(var(--c-glow), 0.3); color: #fff; }
 
 img, svg, video, canvas { display: block; }
 a { color: inherit; }
@@ -99,6 +120,10 @@ button { font: inherit; color: inherit; }
   border-radius: 10px;
 }
 
+/* цветные эмодзи вне вечеринки — серые (фильтр только на крошечных статичных кусочках) */
+.emo { display: inline-block; filter: grayscale(1); }
+html.party .emo { filter: none; }
+
 /* =========================================================================
    1. Фон
    ========================================================================= */
@@ -108,10 +133,10 @@ button { font: inherit; color: inherit; }
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  /* если видео не загрузилось — похожий градиент вместо чёрной дыры */
+  /* если видео не загрузилось — похожий «лунный» градиент вместо чёрной дыры */
   background:
-    radial-gradient(60% 70% at 70% 45%, rgba(155, 123, 255, 0.22), transparent 70%),
-    radial-gradient(50% 60% at 90% 80%, rgba(255, 61, 154, 0.18), transparent 70%),
+    radial-gradient(60% 70% at 70% 45%, rgba(var(--c-cool), 0.2), transparent 70%),
+    radial-gradient(50% 60% at 90% 80%, rgba(var(--c-glow), 0.07), transparent 70%),
     var(--bg);
 }
 
@@ -124,13 +149,15 @@ button { font: inherit; color: inherit; }
   object-position: 60% 50%;
 }
 
+/* затемнение + зерно одним слоем (зерно — первым, поверх градиентов) */
 .bg-shade {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(40% 50% at 68% 50%, rgba(7, 5, 12, 0.25), rgba(7, 5, 12, 0) 70%),
-    linear-gradient(90deg, rgba(7, 5, 12, 0.86) 0%, rgba(7, 5, 12, 0.62) 26%, rgba(7, 5, 12, 0.18) 50%, rgba(7, 5, 12, 0) 66%),
-    radial-gradient(120% 95% at 62% 48%, rgba(7, 5, 12, 0) 52%, rgba(7, 5, 12, 0.78) 100%);
+    var(--grain),
+    radial-gradient(40% 50% at 68% 50%, rgba(var(--c-shade), 0.25), rgba(var(--c-shade), 0) 70%),
+    linear-gradient(90deg, rgba(var(--c-shade), 0.88) 0%, rgba(var(--c-shade), 0.64) 26%, rgba(var(--c-shade), 0.18) 50%, rgba(var(--c-shade), 0) 66%),
+    radial-gradient(120% 95% at 62% 48%, rgba(var(--c-shade), 0) 52%, rgba(var(--c-shade), 0.8) 100%);
 }
 /* вечеринка: радужный оттенок — отдельным слоем поверх видео (фильтр на самом видео дорогой) */
 .bg-shade::after {
@@ -139,36 +166,17 @@ button { font: inherit; color: inherit; }
   inset: -50%;
   background: conic-gradient(from 0deg at 50% 50%, #ff3d9a, #ffb84d, #fff27a, #5dffb4, #5ad1ff, #9b7bff, #ff3d9a);
   opacity: 0;
-  transition: opacity 1.2s ease;
+  visibility: hidden;
+  transition: opacity 1.2s ease, visibility 0s linear 1.2s;
   pointer-events: none;
 }
 html.party .bg-shade::after {
   opacity: 0.13;
+  visibility: visible;
+  transition: opacity 1.2s ease;
   animation: partySpin 14s linear infinite;
 }
 @keyframes partySpin { to { transform: rotate(1turn); } }
-
-.grain {
-  position: absolute;
-  inset: -60px;
-  /* без mix-blend-mode: смешивание поверх видео пересчитывалось бы каждый кадр.
-     Сама текстура — светлые крупинки с прозрачностью (альфа из шума) */
-  opacity: 0.09;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1  0 0 0 0 0.95  0 0 0 0 1  2.2 0 0 0 -1.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 200px 200px;
-  animation: grain 0.9s steps(1) infinite;
-  will-change: transform;
-}
-@keyframes grain {
-  0%   { transform: translate3d(0, 0, 0); }
-  12%  { transform: translate3d(-23px, 17px, 0); }
-  25%  { transform: translate3d(31px, -9px, 0); }
-  37%  { transform: translate3d(-11px, -38px, 0); }
-  50%  { transform: translate3d(42px, 26px, 0); }
-  62%  { transform: translate3d(-37px, 5px, 0); }
-  75%  { transform: translate3d(14px, 41px, 0); }
-  87%  { transform: translate3d(-6px, -21px, 0); }
-}
 
 /* =========================================================================
    2. 3D-сцена, кот
@@ -204,9 +212,11 @@ html.party .bg-shade::after {
   padding: max(118px, 13vh) 24px max(48px, 6vh) clamp(32px, 8vw, 168px);
 }
 
+/* «дымчатое стекло» без backdrop-filter: плотная подложка + лунный отсвет сверху-слева.
+   Слева фон и так затемнён, так что разницы с размытием почти не видно, а GPU не страдает */
 .card {
-  --brd-a: rgba(255, 140, 198, 0.75);
-  --brd-b: rgba(155, 123, 255, 0.55);
+  --brd-a: rgba(var(--c-glow), 0.62);
+  --brd-b: rgba(var(--c-cool), 0.5);
   position: relative;
   isolation: isolate;
   pointer-events: auto;
@@ -214,15 +224,12 @@ html.party .bg-shade::after {
   padding: 30px 30px 20px;
   border-radius: var(--radius);
   background:
-    radial-gradient(120% 70% at 0% 0%, rgba(155, 123, 255, 0.16), transparent 60%),
-    radial-gradient(110% 70% at 100% 100%, rgba(255, 61, 154, 0.11), transparent 60%),
+    radial-gradient(120% 70% at 0% 0%, rgba(var(--c-glow), 0.075), transparent 60%),
+    radial-gradient(110% 70% at 100% 100%, rgba(var(--c-cool), 0.07), transparent 60%),
     var(--glass);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
-  backdrop-filter: blur(22px) saturate(160%);
   box-shadow:
-    0 40px 90px -34px rgba(0, 0, 0, 0.85),
-    0 0 80px -24px rgba(255, 61, 154, 0.38),
-    0 0 120px -50px rgba(155, 123, 255, 0.5),
+    0 40px 90px -34px rgba(0, 0, 0, 0.9),
+    0 0 80px -30px rgba(var(--c-glow), 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
   container: card / inline-size;
 }
@@ -235,13 +242,16 @@ html.party .bg-shade::after {
   z-index: -1;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(145deg, var(--brd-a) 0%, rgba(255, 140, 198, 0.12) 32%, rgba(255, 255, 255, 0.04) 55%, var(--brd-b) 100%);
+  background: linear-gradient(145deg, var(--brd-a) 0%, rgba(var(--c-tint), 0.12) 32%, rgba(255, 255, 255, 0.04) 55%, var(--brd-b) 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
   pointer-events: none;
+  opacity: 0.78;
+  transition: opacity 0.4s ease;
 }
+.card.is-hover::before { opacity: 1; }
 
 /* блик, бегающий за курсором */
 .card__glare {
@@ -260,16 +270,14 @@ html.party .bg-shade::after {
   height: 420px;
   margin: -210px 0 0 -210px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 220, 240, 0.14) 0%, rgba(255, 140, 198, 0.06) 35%, transparent 68%);
+  background: radial-gradient(circle, rgba(var(--c-glow), 0.09) 0%, rgba(var(--c-glow), 0.035) 35%, transparent 68%);
   opacity: 0;
   transition: opacity 0.5s ease;
-  will-change: transform;
 }
-.card.is-hover .card__glare > span { opacity: 1; }
-.card::before { transition: opacity 0.4s ease, filter 0.4s ease; }
-.card.is-hover::before { filter: brightness(1.35) saturate(1.15); }
+/* слой под блик — только пока курсор над карточкой */
+.card.is-hover .card__glare > span { opacity: 1; will-change: transform; }
 
-/* ---- появление ---- */
+/* ---- появление (только opacity/translate: blur на десятке элементов в момент входа дорогой) ---- */
 html.js .card {
   opacity: 0;
   translate: 0 28px;
@@ -287,16 +295,13 @@ html.js.entered .card {
 html.js .reveal {
   opacity: 0;
   translate: 0 14px;
-  filter: blur(6px);
 }
 html.js.entered .reveal {
   opacity: 1;
   translate: none;
-  filter: blur(0);
   transition:
     opacity 0.75s var(--ease-out),
-    translate 0.9s var(--ease-out),
-    filter 0.75s var(--ease-out);
+    translate 0.9s var(--ease-out);
   transition-delay: calc(0.5s + var(--i, 0) * 75ms);
 }
 
@@ -314,32 +319,33 @@ html.js.entered .reveal {
   width: 86px;
   height: 86px;
   border-radius: 50%;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.avatar__ring,
+/* кольцо — диск с конусным градиентом ПОД фото: тёмная обводка фото оставляет видимой
+   полоску в 2px. Без маски и без blur — вращение чисто на композиторе */
+.avatar__ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--pink), var(--violet) 28%, rgba(var(--c-cool), 0) 46%, rgba(var(--c-glow), 0) 54%, var(--hot) 74%, var(--pink));
+  animation: spin 7s linear infinite;
+}
+/* мягкий ореол — статичный градиент вместо размытого вращающегося диска */
 .avatar__glow {
   position: absolute;
+  inset: -16px;
   border-radius: 50%;
-  background: conic-gradient(from 0deg, var(--pink), var(--violet) 28%, rgba(155, 123, 255, 0) 46%, rgba(255, 61, 154, 0) 54%, var(--hot) 74%, var(--pink));
-  animation: spin 5.5s linear infinite;
-}
-.avatar__ring {
-  inset: -5px;
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-}
-.avatar__glow {
-  inset: -9px;
-  filter: blur(12px);
-  opacity: 0.55;
+  background: radial-gradient(closest-side, rgba(var(--c-glow), 0.2), rgba(var(--c-glow), 0.07) 62%, rgba(var(--c-glow), 0) 100%);
+  pointer-events: none;
 }
 .avatar__img {
   position: absolute;
   inset: 0;
   border-radius: 50%;
   overflow: hidden;
-  background: #170c26;
-  box-shadow: 0 0 0 3px rgba(9, 5, 16, 0.92);
+  background: #141414;
+  box-shadow: 0 0 0 3px rgba(9, 9, 9, 0.96);
 }
 .avatar__img img {
   width: 100%;
@@ -350,7 +356,6 @@ html.js.entered .reveal {
   transition: transform 0.6s var(--ease-out);
 }
 .avatar:hover .avatar__img img { transform: scale(1.82); }
-.avatar { cursor: pointer; }
 .avatar:focus-visible { outline: 2px solid var(--pink); outline-offset: 7px; border-radius: 50%; }
 .avatar.is-boop { animation: boop 0.5s var(--ease-back); }
 .avatar__dot {
@@ -360,8 +365,8 @@ html.js.entered .reveal {
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  background: radial-gradient(circle at 34% 32%, #ffe1f0 0 14%, var(--pink) 48%, var(--hot) 100%);
-  box-shadow: 0 0 0 3.5px #120a1f, 0 0 14px rgba(255, 140, 198, 0.75);
+  background: radial-gradient(circle at 34% 32%, #fff 0 16%, var(--pink) 52%, var(--violet) 100%);
+  box-shadow: 0 0 0 3.5px #0d0d0d, 0 0 14px rgba(var(--c-glow), 0.5);
 }
 @keyframes spin { to { transform: rotate(1turn); } }
 @keyframes boop {
@@ -371,7 +376,7 @@ html.js.entered .reveal {
   100% { transform: scale(1); }
 }
 
-/* ---- ник ---- */
+/* ---- ник: хромированный, блик пробегает только при наведении ---- */
 .name {
   position: relative;
   isolation: isolate;
@@ -386,14 +391,13 @@ html.js.entered .reveal {
 }
 .name__text {
   display: inline-block;
-  background: linear-gradient(100deg, #fff 0%, #ffe6f2 18%, var(--pink) 34%, #fff 50%, #e2d8ff 64%, var(--violet) 80%, #fff 100%);
-  background-size: 260% 100%;
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.95) 50%, rgba(255, 255, 255, 0) 70%) -150% 0 / 60% 100% no-repeat,
+    linear-gradient(180deg, #ffffff 18%, #e4e4e4 52%, #a2a2a2 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  animation: shimmer 8s linear infinite;
-  filter: drop-shadow(0 0 22px rgba(255, 140, 198, 0.28));
 }
 .name::before,
 .name::after {
@@ -408,10 +412,17 @@ html.js.entered .reveal {
 }
 .name::before { color: var(--hot); }
 .name::after { color: var(--cyan); }
-.name:hover::before { opacity: 0.85; animation: glitchA 1.1s steps(1) infinite; }
-.name:hover::after { opacity: 0.75; animation: glitchB 1.3s steps(1) infinite; }
-.name:hover .name__text { animation: shimmer 8s linear infinite, nameJolt 1.1s steps(1) infinite; }
+/* только с настоящим курсором: на телефоне :hover «залипает» после тапа, и глитч крутился бы бесконечно */
+@media (hover: hover) {
+  .name:hover::before { opacity: 0.6; animation: glitchA 1.1s steps(1) infinite; }
+  .name:hover::after { opacity: 0.85; animation: glitchB 1.3s steps(1) infinite; }
+  .name:hover .name__text { animation: sheen 1.6s var(--ease-io) infinite, nameJolt 1.1s steps(1) infinite; }
+}
 
+@keyframes sheen {
+  from { background-position: -150% 0, 0 0; }
+  to { background-position: 250% 0, 0 0; }
+}
 @keyframes shimmer {
   from { background-position: 0% 50%; }
   to { background-position: -260% 50%; }
@@ -435,31 +446,38 @@ html.js.entered .reveal {
   border-radius: 999px;
   font: 500 11.5px/1.2 var(--f-mono);
   letter-spacing: 0.01em;
-  color: #dcd2f0;
+  color: #d6d6d6;
   background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 .status__dot {
   flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--pink);
-  box-shadow: 0 0 10px var(--pink);
+  background: var(--hot);
+  box-shadow: 0 0 10px rgba(var(--c-glow), 0.75);
 }
 .status__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---- печатная машинка ---- */
+/* ---- печатная машинка ----
+   «призрак» с самой длинной фразой (невидимый) и живая строка лежат в одной ячейке сетки:
+   высота карточки не прыгает, когда фраза переносится на новую строку (и кот не подскакивает) */
 .tagline {
+  display: grid;
   margin: 22px 0 0;
   min-height: 3em;
   font: 500 13.5px/1.5 var(--f-mono);
-  color: #ffd9ec;
+  color: #ececec;
   letter-spacing: -0.005em;
 }
+.tagline__ghost,
+.tagline__live { grid-area: 1 / 1; min-width: 0; }
+.tagline__ghost { visibility: hidden; pointer-events: none; }
+.tagline__ghost .tagline__caret { animation: none; }
 .tagline__prompt {
   color: var(--violet);
-  margin-right: 0.5ch;
+  margin-right: 1.2ch;
   font-weight: 500;
 }
 .tagline__caret {
@@ -469,8 +487,8 @@ html.js.entered .reveal {
   margin-left: 2px;
   vertical-align: -0.2em;
   border-radius: 1px;
-  background: linear-gradient(var(--pink), var(--hot));
-  box-shadow: 0 0 10px rgba(255, 61, 154, 0.7);
+  background: linear-gradient(var(--hot), var(--pink));
+  box-shadow: 0 0 10px rgba(var(--c-glow), 0.45);
   animation: caret 1.05s steps(1) infinite;
 }
 .tagline.is-typing .tagline__caret { animation: none; }
@@ -508,8 +526,11 @@ html.js.entered .reveal {
   .link__go { display: block; }
 }
 
+/* --brand ставит ui.js из config.links (оттенки серого); --b — то, чем реально красим:
+   в вечеринке его подменяют настоящие цвета брендов (раздел 8) */
 .link {
   --brand: var(--pink);
+  --b: var(--brand);
   --mx: 0px;
   --my: 0px;
   position: relative;
@@ -523,8 +544,8 @@ html.js.entered .reveal {
   margin: 0;
   padding: 10px 14px 10px 10px;
   border-radius: 17px;
-  border: 1px solid rgba(255, 255, 255, 0.085);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.022));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
   color: var(--ink);
   text-align: left;
   text-decoration: none;
@@ -545,28 +566,41 @@ html.js.entered .reveal {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(130% 160% at var(--px, 20%) var(--py, 50%), color-mix(in srgb, var(--brand) 19%, transparent), transparent 62%);
+    radial-gradient(130% 160% at var(--px, 20%) var(--py, 50%), color-mix(in srgb, var(--b) 16%, transparent), transparent 62%);
   opacity: 0;
   transition: opacity 0.4s ease;
 }
-.link:hover,
+/* :hover — только там, где есть настоящий курсор: на телефоне после тапа подсветка «залипала» */
 .link:focus-visible,
 .link.is-ping {
-  border-color: rgba(255, 255, 255, 0.28);
-  border-color: color-mix(in srgb, var(--brand) 58%, transparent);
+  border-color: rgba(255, 255, 255, 0.3);
+  border-color: color-mix(in srgb, var(--b) 55%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--brand) 22%, transparent),
-    0 14px 34px -16px color-mix(in srgb, var(--brand) 90%, transparent),
-    0 0 30px -8px color-mix(in srgb, var(--brand) 60%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--b) 18%, transparent),
+    0 14px 34px -16px color-mix(in srgb, var(--b) 55%, transparent),
+    0 0 30px -10px color-mix(in srgb, var(--b) 45%, transparent);
 }
-.link:hover::before,
 .link:focus-visible::before,
 .link.is-ping::before { opacity: 1; }
+@media (hover: hover) {
+  .link:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    border-color: color-mix(in srgb, var(--b) 55%, transparent);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--b) 18%, transparent),
+      0 14px 34px -16px color-mix(in srgb, var(--b) 55%, transparent),
+      0 0 30px -10px color-mix(in srgb, var(--b) 45%, transparent);
+  }
+  .link:hover::before { opacity: 1; }
+  .link:hover .link__icon svg { transform: scale(1.12) rotate(-6deg); }
+  .link:hover .link__go { opacity: 0.95; transform: translate(2px, -2px); }
+  .link--copy:hover .link__go { transform: scale(1.1); }
+}
 .link:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; border-radius: 17px; }
 .link:active { transition-duration: 0.12s; }
 .link.is-ping { animation: ping 0.9s var(--ease-out); }
 @keyframes ping {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 70%, transparent); }
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--b) 60%, transparent); }
   100% { box-shadow: 0 0 0 14px transparent; }
 }
 
@@ -578,20 +612,19 @@ html.js.entered .reveal {
   height: 40px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.05);
-  background: color-mix(in srgb, var(--brand) 15%, rgba(255, 255, 255, 0.03));
-  border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
+  background: color-mix(in srgb, var(--b) 11%, rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid color-mix(in srgb, var(--b) 26%, transparent);
   transform: translate3d(calc(var(--mx) * 0.7), calc(var(--my) * 0.7), 0);
   transition: transform 0.45s var(--ease-out), background-color 0.3s ease;
 }
 .link__icon svg {
   width: 21px;
   height: 21px;
-  fill: var(--brand);
-  fill: color-mix(in srgb, var(--brand) 72%, #fff);
-  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--brand) 55%, transparent));
+  fill: var(--b);
+  fill: color-mix(in srgb, var(--b) 80%, #fff);
   transition: transform 0.45s var(--ease-back);
 }
-.link:hover .link__icon svg,
 .link:focus-visible .link__icon svg { transform: scale(1.12) rotate(-6deg); }
 
 .link__text {
@@ -612,7 +645,7 @@ html.js.entered .reveal {
   text-overflow: ellipsis;
   transition: color 0.25s ease;
 }
-.link.is-copied .link__sub { color: var(--pink); }
+.link.is-copied .link__sub { color: var(--hot); }
 
 .link__go {
   flex: none;
@@ -624,12 +657,10 @@ html.js.entered .reveal {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.38;
+  opacity: 0.4;
   transition: opacity 0.3s ease, transform 0.45s var(--ease-out);
 }
-.link:hover .link__go,
 .link:focus-visible .link__go { opacity: 0.95; transform: translate(2px, -2px); }
-.link--copy:hover .link__go,
 .link--copy:focus-visible .link__go { transform: scale(1.1); }
 
 .ripple {
@@ -642,7 +673,7 @@ html.js.entered .reveal {
   margin: -10px 0 0 -10px;
   border-radius: 50%;
   pointer-events: none;
-  background: radial-gradient(circle, color-mix(in srgb, var(--brand) 60%, #fff 10%) 0%, color-mix(in srgb, var(--brand) 30%, transparent) 45%, transparent 70%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--b) 45%, transparent) 0%, color-mix(in srgb, var(--b) 22%, transparent) 45%, transparent 70%);
 }
 
 /* ---- GitHub ---- */
@@ -652,6 +683,7 @@ html.js.entered .reveal {
   opacity: 0;
   transition: grid-template-rows 0.8s var(--ease-out), opacity 0.7s var(--ease-out);
 }
+.gh[hidden] { display: none; }
 .gh.is-ready { grid-template-rows: 1fr; }
 html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
 .gh__inner { min-height: 0; overflow: hidden; }
@@ -673,18 +705,19 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
   flex: 1;
   min-width: 12px;
   height: 1px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), transparent);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.12), transparent);
 }
 .gh__stats {
   order: 2;
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
   font: 400 11px/1.2 var(--f-mono);
-  color: #b9aed0;
+  color: #ababab;
   white-space: nowrap;
 }
-.gh__stats b { font-weight: 500; color: #e6dcfa; }
+.gh__stats b { font-weight: 500; color: #ededed; }
 .gh__stats i { font-style: normal; opacity: 0.5; }
 .gh__repos {
   list-style: none;
@@ -695,6 +728,7 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
   gap: 6px;
   min-width: 0;
 }
+.gh__repos > li { min-width: 0; max-width: 100%; }
 .gh__recent {
   display: flex;
   align-items: center;
@@ -704,7 +738,7 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
 .gh__recent[hidden] { display: none; }
 .gh__recent-label {
   font: 400 10.5px/1 var(--f-mono);
-  color: #b9aed0;
+  color: #ababab;
 }
 .gh__repo {
   display: inline-flex;
@@ -715,19 +749,19 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
   padding: 5px 10px;
   border-radius: 999px;
   font: 500 11.5px/1.2 var(--f-mono);
-  color: #e6dcfa;
+  color: #e8e8e8;
   text-decoration: none;
-  background: rgba(155, 123, 255, 0.1);
-  border: 1px solid rgba(155, 123, 255, 0.28);
+  background: rgba(var(--c-cool), 0.1);
+  border: 1px solid rgba(var(--c-cool), 0.34);
   transition: border-color 0.25s ease, background-color 0.25s ease, transform 0.35s var(--ease-out), box-shadow 0.3s ease;
 }
 .gh__repo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gh__repo svg { flex: none; width: 12px; height: 12px; fill: none; stroke: var(--violet); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.gh__repo svg { flex: none; width: 12px; height: 12px; fill: none; stroke: var(--pink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .gh__repo:hover,
 .gh__repo:focus-visible {
-  border-color: rgba(255, 140, 198, 0.65);
-  background: rgba(255, 140, 198, 0.12);
-  box-shadow: 0 0 18px -4px rgba(255, 61, 154, 0.55);
+  border-color: rgba(var(--c-tint), 0.65);
+  background: rgba(var(--c-tint), 0.1);
+  box-shadow: 0 0 18px -4px rgba(var(--c-glow), 0.35);
   transform: translateY(-1px);
 }
 .gh__repo:focus-visible { border-radius: 999px; }
@@ -741,15 +775,20 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
   gap: 6px 14px;
   margin-top: 20px;
   padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 12px;
   color: var(--muted);
 }
+.heart {
+  color: var(--hot);
+  font-family: "Segoe UI Symbol", "DejaVu Sans", system-ui, sans-serif;
+  font-variant-emoji: text;
+}
 .card__hint {
   font: 400 11px/1.3 var(--f-mono);
-  color: #b9aed0;
+  color: #ababab;
 }
-.konami { color: #d9c8f2; cursor: help; text-decoration: underline dotted rgba(217, 200, 242, 0.45); text-underline-offset: 3px; }
+.konami { color: #d4d4d4; cursor: help; text-decoration: underline dotted rgba(212, 212, 212, 0.45); text-underline-offset: 3px; }
 
 /* =========================================================================
    4. Кнопки звука
@@ -850,7 +889,7 @@ html.entered .controls {
   width: 3px;
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(var(--pink), var(--violet));
+  background: linear-gradient(var(--hot), var(--violet));
   transform-origin: 50% 100%;
   animation: eq 0.9s ease-in-out infinite alternate;
 }
@@ -883,11 +922,12 @@ html.entered .controls {
     z-index: 79;
     height: calc(92px + env(safe-area-inset-top));
     pointer-events: none;
-    background: linear-gradient(180deg, rgba(7, 5, 12, 0.92) 0%, rgba(7, 5, 12, 0.7) 52%, rgba(7, 5, 12, 0) 100%);
+    background: linear-gradient(180deg, rgba(var(--c-shade), 0.92) 0%, rgba(var(--c-shade), 0.7) 52%, rgba(var(--c-shade), 0) 100%);
     opacity: 0;
-    transition: opacity 0.45s ease;
+    visibility: hidden;
+    transition: opacity 0.45s ease, visibility 0s linear 0.45s;
   }
-  html.entered.is-scrolled .chrome-scrim { opacity: 1; }
+  html.entered.is-scrolled .chrome-scrim { opacity: 1; visibility: visible; transition: opacity 0.45s ease; }
 }
 
 /* =========================================================================
@@ -905,25 +945,30 @@ html.entered .controls {
   font: 600 14px/1.3 var(--f-body);
   color: var(--ink);
   text-align: center;
+  overflow-wrap: anywhere;
   background:
-    radial-gradient(120% 140% at 50% 0%, rgba(255, 140, 198, 0.16), transparent 60%),
-    rgba(20, 11, 36, 0.74);
-  border: 1px solid rgba(255, 140, 198, 0.35);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
-  backdrop-filter: blur(16px) saturate(150%);
-  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, 0.75), 0 0 34px -8px rgba(255, 61, 154, 0.5);
+    radial-gradient(120% 140% at 50% 0%, rgba(var(--c-tint), 0.12), transparent 60%),
+    rgba(var(--c-base), 0.92);
+  border: 1px solid rgba(var(--c-tint), 0.3);
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, 0.8), 0 0 34px -10px rgba(var(--c-glow), 0.3);
   opacity: 0;
+  visibility: hidden;
   transform: translate(-50%, 26px) scale(0.94);
-  transition: opacity 0.35s ease, transform 0.55s var(--ease-out);
+  transition: opacity 0.35s ease, transform 0.55s var(--ease-out), visibility 0s linear 0.55s;
   pointer-events: none;
 }
 #toast.is-on {
   opacity: 1;
+  visibility: visible;
   transform: translate(-50%, 0) scale(1);
+  transition: opacity 0.35s ease, transform 0.55s var(--ease-out);
 }
+/* эмодзи в тостах (кот, вечеринка) вне вечеринки — серые */
+html:not(.party) #toast { filter: grayscale(1); }
 
 /* =========================================================================
-   6. Курсор-светлячок + лепестки
+   6. Курсор-светлячок + лепестки (без mix-blend-mode: смешивание заставляло
+   браузер пересобирать всю страницу в отдельную текстуру каждый кадр)
    ========================================================================= */
 .cursor-glow {
   position: fixed;
@@ -935,8 +980,7 @@ html.entered .controls {
   margin: -18px 0 0 -18px;
   border-radius: 50%;
   pointer-events: none;
-  background: radial-gradient(circle, rgba(255, 170, 214, 0.55) 0%, rgba(255, 61, 154, 0.2) 38%, rgba(155, 123, 255, 0) 70%);
-  mix-blend-mode: screen;
+  background: radial-gradient(circle, rgba(var(--c-glow), 0.42) 0%, rgba(var(--c-glow), 0.13) 38%, rgba(var(--c-glow), 0) 70%);
   opacity: 0;
   transition: opacity 0.35s ease;
   will-change: transform;
@@ -954,10 +998,8 @@ html.entered .controls {
   margin: -4px 0 0 -5px;
   border-radius: 85% 0 85% 0;
   pointer-events: none;
-  background: linear-gradient(135deg, #fff0f7 0%, #ffb6d9 45%, #ff6fb5 100%);
-  box-shadow: 0 0 8px rgba(255, 140, 198, 0.55);
+  background: linear-gradient(135deg, #ffffff 0%, #dedede 45%, #9a9a9a 100%);
   opacity: 0;
-  will-change: transform, opacity;
 }
 html.kex-laser .cursor-glow,
 html.kex-laser .trail-petal { display: none; }
@@ -975,8 +1017,10 @@ html.kex-laser .trail-petal { display: none; }
   display: grid;
   place-items: center;
   overflow: hidden;
+  /* второй (статичный) отсвет теперь просто часть фона — минус огромный слой */
   background:
-    radial-gradient(70% 60% at 50% 46%, rgba(42, 20, 70, 0.75), transparent 70%),
+    radial-gradient(70% 60% at 50% 46%, rgba(34, 34, 34, 0.8), transparent 70%),
+    radial-gradient(45% 40% at 62% 58%, rgba(255, 255, 255, 0.045), transparent 70%),
     var(--bg);
   cursor: pointer;
   user-select: none;
@@ -990,29 +1034,17 @@ html.kex-laser .trail-petal { display: none; }
   inset: 0;
   pointer-events: none;
 }
-.splash__glow {
-  border-radius: 50%;
-  filter: blur(10px);
-}
-.splash__fx > .splash__glow--a {
+/* «луна»: мягкое пятно света медленно дрейфует (только transform, без blur) */
+.splash__fx > .splash__glow {
   inset: auto;
   left: 50%;
   top: 50%;
   width: 90vmax;
   height: 90vmax;
   margin: -45vmax 0 0 -45vmax;
-  background: radial-gradient(circle, rgba(255, 61, 154, 0.18) 0%, rgba(255, 61, 154, 0.05) 35%, transparent 62%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 35%, transparent 62%);
   animation: drift 14s ease-in-out infinite alternate;
-}
-.splash__fx > .splash__glow--b {
-  inset: auto;
-  left: 50%;
-  top: 50%;
-  width: 70vmax;
-  height: 70vmax;
-  margin: -35vmax 0 0 -35vmax;
-  background: radial-gradient(circle, rgba(155, 123, 255, 0.2) 0%, rgba(155, 123, 255, 0.05) 40%, transparent 65%);
-  animation: drift 11s ease-in-out -4s infinite alternate-reverse;
 }
 @keyframes drift {
   0% { transform: translate3d(-14vmax, -6vmax, 0) scale(1); }
@@ -1027,7 +1059,7 @@ html.kex-laser .trail-petal { display: none; }
   inset: auto 0 auto 0;
   top: 0;
   height: 22vh;
-  background: linear-gradient(180deg, transparent, rgba(255, 140, 198, 0.06) 45%, rgba(255, 210, 235, 0.1) 50%, rgba(255, 140, 198, 0.06) 55%, transparent);
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.035) 45%, rgba(255, 255, 255, 0.07) 50%, rgba(255, 255, 255, 0.035) 55%, transparent);
   animation: sweep 6.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 @keyframes sweep {
@@ -1035,6 +1067,7 @@ html.kex-laser .trail-petal { display: none; }
   to { transform: translate3d(0, 105vh, 0); }
 }
 
+/* белые лепестки: без blur/box-shadow, «дальние» — просто прозрачнее и меньше */
 .splash__petals i {
   position: absolute;
   top: 0;
@@ -1042,25 +1075,22 @@ html.kex-laser .trail-petal { display: none; }
   width: calc(12px * var(--s, 1));
   height: calc(9px * var(--s, 1));
   border-radius: 85% 0 85% 0;
-  background: linear-gradient(135deg, #fff0f7 0%, #ffb3d6 45%, #ff70b4 100%);
-  opacity: var(--o, 0.7);
-  filter: blur(var(--b, 0px));
-  box-shadow: 0 0 10px rgba(255, 140, 198, 0.4);
+  background: linear-gradient(135deg, #ffffff 0%, #e2e2e2 45%, #9c9c9c 100%);
+  opacity: var(--o, 0.75);
   animation: petalFall var(--d, 10s) linear var(--dl, 0s) infinite;
-  will-change: transform;
 }
 .splash__petals i:nth-child(1)  { --x: 6%;  --d: 11s; --dl: -1s;  --s: 1.1; --dx: 9vw; }
-.splash__petals i:nth-child(2)  { --x: 15%; --d: 14s; --dl: -7s;  --s: 0.7; --dx: 6vw;  --o: 0.45; --b: 1px; }
+.splash__petals i:nth-child(2)  { --x: 15%; --d: 14s; --dl: -7s;  --s: 0.7; --dx: 6vw;  --o: 0.35; }
 .splash__petals i:nth-child(3)  { --x: 24%; --d: 9s;  --dl: -4s;  --s: 1.3; --dx: 12vw; }
-.splash__petals i:nth-child(4)  { --x: 33%; --d: 16s; --dl: -11s; --s: 0.6; --dx: 4vw;  --o: 0.4; --b: 1.5px; }
+.splash__petals i:nth-child(4)  { --x: 33%; --d: 16s; --dl: -11s; --s: 0.6; --dx: 4vw;  --o: 0.3; }
 .splash__petals i:nth-child(5)  { --x: 41%; --d: 12s; --dl: -2s;  --s: 0.9; --dx: 10vw; }
-.splash__petals i:nth-child(6)  { --x: 52%; --d: 10s; --dl: -8s;  --s: 1.4; --dx: 7vw;  --o: 0.6; --b: 2px; }
+.splash__petals i:nth-child(6)  { --x: 52%; --d: 10s; --dl: -8s;  --s: 1.4; --dx: 7vw;  --o: 0.5; }
 .splash__petals i:nth-child(7)  { --x: 60%; --d: 13s; --dl: -5s;  --s: 0.8; --dx: 11vw; }
-.splash__petals i:nth-child(8)  { --x: 69%; --d: 15s; --dl: -13s; --s: 1;   --dx: 5vw;  --o: 0.5; }
+.splash__petals i:nth-child(8)  { --x: 69%; --d: 15s; --dl: -13s; --s: 1;   --dx: 5vw;  --o: 0.45; }
 .splash__petals i:nth-child(9)  { --x: 77%; --d: 9.5s;--dl: -6s;  --s: 1.2; --dx: 9vw; }
-.splash__petals i:nth-child(10) { --x: 85%; --d: 12.5s;--dl: -9s; --s: 0.65;--dx: 6vw;  --o: 0.4; --b: 1px; }
+.splash__petals i:nth-child(10) { --x: 85%; --d: 12.5s;--dl: -9s; --s: 0.65;--dx: 6vw;  --o: 0.3; }
 .splash__petals i:nth-child(11) { --x: 92%; --d: 10.5s;--dl: -3s; --s: 1;   --dx: 8vw; }
-.splash__petals i:nth-child(12) { --x: 47%; --d: 17s; --dl: -14s; --s: 0.55;--dx: 3vw;  --o: 0.35; --b: 1px; }
+.splash__petals i:nth-child(12) { --x: 47%; --d: 17s; --dl: -14s; --s: 0.55;--dx: 3vw;  --o: 0.28; }
 @keyframes petalFall {
   from { transform: translate3d(0, -6vh, 0) rotate(0deg) rotateX(0deg); }
   to { transform: translate3d(var(--dx, 8vw), 106vh, 0) rotate(560deg) rotateX(900deg); }
@@ -1073,12 +1103,14 @@ html.kex-laser .trail-petal { display: none; }
   gap: 22px;
   padding: 0 var(--gutter);
   text-align: center;
-  transition: transform 0.9s var(--ease-out), opacity 0.6s ease, filter 0.7s ease;
+  transition: transform 0.9s var(--ease-out), opacity 0.6s ease;
 }
 .splash__kicker {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 14px;
+  gap: 8px 14px;
   margin: 0;
   font: 500 11px/1 var(--f-mono);
   letter-spacing: 0.32em;
@@ -1089,12 +1121,13 @@ html.kex-laser .trail-petal { display: none; }
 .splash__sep {
   width: 30px;
   height: 1px;
-  background: linear-gradient(90deg, var(--pink), var(--violet));
+  background: linear-gradient(90deg, var(--hot), var(--violet));
 }
 .splash__title {
   position: relative;
   isolation: isolate;
   margin: 0;
+  max-width: 100%;
   font-family: var(--f-display);
   font-weight: 800;
   font-size: clamp(54px, 15.5vw, 220px);
@@ -1107,9 +1140,10 @@ html.kex-laser .trail-petal { display: none; }
   position: relative;
   z-index: 2;
   display: inline-block;
-  text-shadow: 0 0 40px rgba(255, 140, 198, 0.35), 0 0 120px rgba(155, 123, 255, 0.45);
+  text-shadow: 0 0 40px rgba(255, 255, 255, 0.22), 0 0 120px rgba(255, 255, 255, 0.16);
   animation: glitchMain 4.2s steps(1) 1.4s infinite;
 }
+/* глитч: белый и графитовый «сдвиги» вместо розового/голубого */
 .splash__title::before,
 .splash__title::after {
   content: attr(data-text);
@@ -1117,26 +1151,25 @@ html.kex-laser .trail-petal { display: none; }
   left: 0;
   top: 0;
   width: 100%;
-  mix-blend-mode: screen;
   pointer-events: none;
 }
 .splash__title::before {
   z-index: 1;
-  color: var(--hot);
+  color: #8f8f8f;
   transform: translate(-0.006em, 0);
   opacity: 0.5;
   animation: glitchA 4.2s steps(1) 1.4s infinite;
 }
 .splash__title::after {
   z-index: 3;
-  color: var(--cyan);
+  color: #fff;
   transform: translate(0.006em, 0);
   opacity: 0.3;
   animation: glitchB 4.2s steps(1) 1.4s infinite;
 }
 @keyframes titleIn {
-  from { opacity: 0; transform: scale(0.92); filter: blur(18px); letter-spacing: 0.04em; }
-  to { opacity: 1; transform: none; filter: blur(0); letter-spacing: -0.05em; }
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes glitchA {
   0%, 78%, 100% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.006em, 0); opacity: 0.5; }
@@ -1171,28 +1204,45 @@ html.kex-laser .trail-petal { display: none; }
   animation: fadeUp 1.2s var(--ease-out) 0.5s both;
 }
 .splash__hint-text {
+  position: relative;
   display: inline-block;
   padding: 13px 22px;
   border-radius: 999px;
   font: 500 12.5px/1 var(--f-mono);
   letter-spacing: 0.2em;
   color: var(--ink);
-  border: 1px solid rgba(255, 140, 198, 0.3);
-  background: rgba(255, 255, 255, 0.03);
-  box-shadow: 0 0 0 0 rgba(255, 61, 154, 0.4), inset 0 0 18px rgba(255, 140, 198, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.05);
   opacity: 0.45;
   transition: opacity 0.4s ease, border-color 0.3s ease;
+}
+/* пульс — расходящееся кольцо (transform/opacity) вместо анимации box-shadow,
+   которая перерисовывала кнопку каждый кадр */
+.splash__hint-text::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  opacity: 0;
+  pointer-events: none;
 }
 #splash.is-ready .splash__hint-text {
   opacity: 1;
   animation: hintPulse 2.4s ease-in-out infinite;
 }
+#splash.is-ready .splash__hint-text::after { animation: hintRing 2.4s ease-out infinite; }
 #splash:hover .splash__hint-text,
-#splash:focus-visible .splash__hint-text { border-color: rgba(255, 140, 198, 0.75); }
+#splash:focus-visible .splash__hint-text { border-color: rgba(255, 255, 255, 0.72); }
 #splash:focus-visible .splash__hint-text { outline: 2px solid var(--pink); outline-offset: 4px; }
 @keyframes hintPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 61, 154, 0.35), inset 0 0 18px rgba(255, 140, 198, 0.06); opacity: 1; }
-  50% { box-shadow: 0 0 0 10px rgba(255, 61, 154, 0), inset 0 0 22px rgba(255, 140, 198, 0.14); opacity: 0.72; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+@keyframes hintRing {
+  0% { opacity: 0.7; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(1.08, 1.4); }
 }
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(14px); }
@@ -1204,6 +1254,7 @@ html.kex-laser .trail-petal { display: none; }
   right: 0;
   bottom: calc(26px + env(safe-area-inset-bottom));
   margin: 0;
+  padding: 0 var(--gutter);
   text-align: center;
   font: 400 11px/1 var(--f-mono);
   letter-spacing: 0.14em;
@@ -1224,8 +1275,12 @@ html.kex-laser .trail-petal { display: none; }
 #splash.is-leaving .splash__inner {
   transform: scale(1.14);
   opacity: 0;
-  filter: blur(10px);
 }
+/* пока дырка растёт — бесконечные эффекты заставки уже не нужны */
+#splash.is-leaving .splash__petals,
+#splash.is-leaving .splash__sweep,
+#splash.is-fading .splash__petals,
+#splash.is-fading .splash__sweep { display: none; }
 #splash.is-fading {
   pointer-events: none;
   opacity: 0;
@@ -1233,10 +1288,25 @@ html.kex-laser .trail-petal { display: none; }
 }
 
 /* =========================================================================
-   8. Режим вечеринки (Konami)
+   8. Режим вечеринки (Konami) — единственное место, где есть цвет.
+   Подменяем палитру на «ту самую» розово-фиолетовую + радуга
    ========================================================================= */
+html.party {
+  --pink: #ff8cc6;
+  --hot: #ff3d9a;
+  --violet: #9b7bff;
+  --deep: #2a1446;
+  --cyan: #6fdcff;
+  --c-glow: 255, 61, 154;
+  --c-tint: 255, 140, 198;
+  --c-cool: 155, 123, 255;
+  --c-base: 14, 8, 26;
+  --c-shade: 7, 5, 12;
+  --c-on: 64, 14, 52;
+}
 html.party .card::before {
   padding: 1.5px;
+  opacity: 1;
   background: conic-gradient(from var(--rb), #ff3d9a, #ffb84d, #fff27a, #5dffb4, #5ad1ff, #9b7bff, #ff3d9a);
   animation: rainbowSpin 3s linear infinite;
 }
@@ -1247,13 +1317,27 @@ html.party .card {
     0 0 120px -40px rgba(90, 209, 255, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
-html.party .avatar__ring,
-html.party .avatar__glow {
-  background: conic-gradient(#ff3d9a, #ffb84d, #fff27a, #5dffb4, #5ad1ff, #9b7bff, #ff3d9a);
-  animation-duration: 1.4s;
+html.party .avatar__ring { background: conic-gradient(#ff3d9a, #ffb84d, #fff27a, #5dffb4, #5ad1ff, #9b7bff, #ff3d9a); animation-duration: 1.4s; }
+html.party .avatar__glow { background: radial-gradient(closest-side, rgba(255, 61, 154, 0.45), rgba(90, 209, 255, 0.18) 62%, transparent 100%); }
+html.party .name__text {
+  background: linear-gradient(100deg, #fff 0%, #ffe6f2 18%, var(--pink) 34%, #fff 50%, #e2d8ff 64%, var(--violet) 80%, #fff 100%);
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 1.6s linear infinite;
 }
-html.party .name__text { animation-duration: 1.6s; }
+@media (hover: hover) {
+  html.party .name:hover .name__text { animation: shimmer 1.6s linear infinite, nameJolt 1.1s steps(1) infinite; }
+}
+html.party .tagline { color: #ffd9ec; }
 html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122, 0.5) 0%, rgba(90, 209, 255, 0.25) 38%, transparent 70%); }
+html.party .trail-petal { background: linear-gradient(135deg, #fff0f7 0%, #ffb6d9 45%, #ff6fb5 100%); }
+/* настоящие цвета брендов */
+html.party .link { --b: var(--pink); }
+html.party .link[data-id="discord"] { --b: #5865F2; }
+html.party .link[data-id="github"] { --b: #f0f6fc; }
+html.party .link[data-id="steam"] { --b: #66c0f4; }
+html.party .link[data-id="telegram"] { --b: #29A9EB; }
 @keyframes rainbowSpin { to { --rb: 360deg; } }
 
 /* =========================================================================
@@ -1314,8 +1398,9 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
 @media (max-width: 899.98px) {
   .bg-shade {
     background:
-      linear-gradient(180deg, rgba(7, 5, 12, 0) 0%, rgba(7, 5, 12, 0) 34%, rgba(7, 5, 12, 0.55) 62%, rgba(7, 5, 12, 0.82) 100%),
-      radial-gradient(130% 80% at 50% 26%, rgba(7, 5, 12, 0) 45%, rgba(7, 5, 12, 0.7) 100%);
+      var(--grain),
+      linear-gradient(180deg, rgba(var(--c-shade), 0) 0%, rgba(var(--c-shade), 0) 34%, rgba(var(--c-shade), 0.55) 62%, rgba(var(--c-shade), 0.84) 100%),
+      radial-gradient(130% 80% at 50% 26%, rgba(var(--c-shade), 0) 45%, rgba(var(--c-shade), 0.72) 100%);
   }
   #bg-video { object-position: 68% 50%; }
   /* остров сверху (scene3d: центр на 22% высоты), карточка ниже — между ними воздух для кота */
@@ -1327,18 +1412,15 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
     padding-left: max(var(--gutter), env(safe-area-inset-left));
     padding-right: max(var(--gutter), env(safe-area-inset-right));
   }
-  /* на телефоне без backdrop-filter (дорого поверх видео и 3D) — стекло просто плотнее */
   .card {
     width: 100%;
     max-width: 540px;
     margin: 0 auto;
     padding: 26px 22px 18px;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
     background:
-      radial-gradient(120% 60% at 0% 0%, rgba(155, 123, 255, 0.16), transparent 60%),
-      radial-gradient(110% 60% at 100% 100%, rgba(255, 61, 154, 0.11), transparent 60%),
-      rgba(14, 8, 26, 0.93);
+      radial-gradient(120% 60% at 0% 0%, rgba(var(--c-glow), 0.07), transparent 60%),
+      radial-gradient(110% 60% at 100% 100%, rgba(var(--c-cool), 0.07), transparent 60%),
+      rgba(var(--c-base), 0.93);
   }
   .card__head { gap: 16px; }
   .avatar { width: 76px; height: 76px; }
@@ -1367,8 +1449,9 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   }
   .bg-shade {
     background:
-      linear-gradient(90deg, rgba(7, 5, 12, 0.8) 0%, rgba(7, 5, 12, 0.5) 40%, rgba(7, 5, 12, 0) 62%),
-      radial-gradient(120% 95% at 70% 50%, rgba(7, 5, 12, 0) 52%, rgba(7, 5, 12, 0.7) 100%);
+      var(--grain),
+      linear-gradient(90deg, rgba(var(--c-shade), 0.82) 0%, rgba(var(--c-shade), 0.5) 40%, rgba(var(--c-shade), 0) 62%),
+      radial-gradient(120% 95% at 70% 50%, rgba(var(--c-shade), 0) 52%, rgba(var(--c-shade), 0.7) 100%);
   }
 }
 
@@ -1378,6 +1461,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .avatar { width: 66px; height: 66px; }
   .status { font-size: 10.5px; padding: 5px 10px 5px 8px; }
   .tagline { font-size: 12.5px; }
+  .splash__kicker { gap: 8px 10px; letter-spacing: 0.18em; }
 }
 
 @media (hover: none) {
@@ -1385,12 +1469,21 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
 }
 
 /* =========================================================================
-   10. Меньше движения
+   10. Облегчённый режим (html.lite: ui.js ставит, если кадры не успевают) —
+   гасим остатки бесконечных декоративных анимаций
+   ========================================================================= */
+html.lite .avatar__ring,
+html.lite .tagline__caret,
+html.lite .eq i { animation: none; }
+html.lite .eq i:nth-child(odd) { transform: scaleY(0.55); }
+html.lite .trail-petal { display: none; }
+html.lite .card::before { transition: none; }
+
+/* =========================================================================
+   11. Меньше движения
    ========================================================================= */
 @media (prefers-reduced-motion: reduce) {
-  .grain,
   .avatar__ring,
-  .avatar__glow,
   .name__text,
   .splash__glow,
   .splash__sweep,
@@ -1402,6 +1495,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .splash__hint,
   .splash__foot,
   #splash.is-ready .splash__hint-text,
+  #splash.is-ready .splash__hint-text::after,
   .tagline__caret,
   .link.is-ping,
   .avatar.is-boop { animation: none !important; }
@@ -1413,7 +1507,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .name:hover::before,
   .name:hover::after,
   .name:hover .name__text { animation: none; }
-  html.js .reveal { translate: none; filter: none; }
+  html.js .reveal { translate: none; }
   html.js .card { translate: none; scale: none; }
   html.js.entered .reveal { transition: opacity 0.5s ease; transition-delay: calc(0.2s + var(--i, 0) * 40ms); }
   html.js.entered .card { transition: opacity 0.5s ease; }
@@ -1422,4 +1516,5 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .link:hover .link__icon svg { transform: none; }
   html.party .bg-shade::after { animation: none; }
   html.party .card::before { animation: none; }
+  html.party .name__text { animation: none; }
 }

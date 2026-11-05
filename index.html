@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>sempik</title>
-<meta name="description" content="sempik — сайт-визитка: 3D-остров с ночной сакурой, ссылки на Discord, GitHub и Telegram и котик Кекс, которого можно гладить.">
-<meta name="theme-color" content="#07050c">
+<meta name="description" content="sempik — сайт-визитка: чёрно-белый 3D-остров с ночной сакурой, ссылки на Discord, GitHub и Steam и котик Кекс, которого можно гладить.">
+<meta name="theme-color" content="#070707">
 <meta name="color-scheme" content="dark">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="sempik">
 <meta property="og:title" content="sempik">
-<meta property="og:description" content="Визитка sempik: ночная сакура в 3D, ссылки на Discord, GitHub и Telegram и интерактивный котик.">
+<meta property="og:description" content="Визитка sempik: ночная сакура в 3D, ссылки на Discord, GitHub и Steam и интерактивный котик.">
 <meta property="og:url" content="https://sempik.github.io/">
 <meta property="og:image" content="https://sempik.github.io/avatar.jpg">
 <meta property="og:image:width" content="640">
@@ -23,7 +23,7 @@
 <meta name="twitter:description" content="Визитка sempik: ночная сакура в 3D, ссылки и котик, которого можно гладить.">
 <meta name="twitter:image" content="https://sempik.github.io/avatar.jpg">
 
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%23ff8cc6' d='M8 5l20 13-15 13zM56 5L36 18l15 13z'/%3E%3Cellipse cx='32' cy='38' rx='25' ry='21' fill='%23ff8cc6'/%3E%3Cpath fill='%23ff3d9a' d='M13 12l8 6-6 6zM51 12l-8 6 6 6z'/%3E%3Cellipse cx='23' cy='37' rx='3.6' ry='4.4' fill='%2307050c'/%3E%3Cellipse cx='41' cy='37' rx='3.6' ry='4.4' fill='%2307050c'/%3E%3Cpath d='M29.5 44.5h5L32 47.5z' fill='%2307050c'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%23ececec' d='M8 5l20 13-15 13zM56 5L36 18l15 13z'/%3E%3Cellipse cx='32' cy='38' rx='25' ry='21' fill='%23ececec'/%3E%3Cpath fill='%23999999' d='M13 12l8 6-6 6zM51 12l-8 6 6 6z'/%3E%3Cellipse cx='23' cy='37' rx='3.6' ry='4.4' fill='%23070707'/%3E%3Cellipse cx='41' cy='37' rx='3.6' ry='4.4' fill='%23070707'/%3E%3Cpath d='M29.5 44.5h5L32 47.5z' fill='%23070707'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="avatar.jpg">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -79,13 +79,13 @@
 </head>
 <body>
 
-<!-- 1. фон: мокшен-видео + затемнение + зерно -->
+<!-- 1. фон: мокшен-видео + затемнение (зерно — фоном того же слоя) -->
 <div class="bg" aria-hidden="true">
-  <!-- src ставит скрипт внизу страницы: на телефонах — облегчённая 720p-версия, при «меньше движения»
-       или экономии трафика — только постер; качать начинаем, когда 3D уже загрузилось (или при входе) -->
+  <!-- src ставит скрипт внизу страницы: на телефонах и слабых ноутбуках — облегчённая 720p-версия,
+       при «меньше движения» или экономии трафика — только постер; качать начинаем, когда 3D уже
+       загрузилось (или при входе) -->
   <video id="bg-video" autoplay muted loop playsinline preload="none" poster="assets/motion-poster.jpg" data-src="assets/motion.mp4" data-src-sm="assets/motion-720.mp4" disablepictureinpicture disableremoteplayback tabindex="-1"></video>
   <div class="bg-shade"></div>
-  <div class="grain"></div>
 </div>
 
 <!-- 2. 3D-сцена (прозрачная) -->
@@ -110,8 +110,9 @@
     </header>
 
     <p class="tagline reveal" style="--i:3">
-      <span class="tagline__prompt" aria-hidden="true">&gt;</span>
-      <span class="tagline__text" aria-hidden="true">делаю сайты, которые никто не просил</span><span class="tagline__caret" aria-hidden="true"></span>
+      <!-- невидимый «призрак» с самой длинной фразой держит высоту строки (ui.js кладёт его текст) -->
+      <span class="tagline__ghost" aria-hidden="true"><span class="tagline__prompt">&gt;</span><span class="tagline__ghost-text">делаю сайты, которые никто не просил</span><span class="tagline__caret"></span></span>
+      <span class="tagline__live" aria-hidden="true"><span class="tagline__prompt">&gt;</span><span class="tagline__text">делаю сайты, которые никто не просил</span><span class="tagline__caret"></span></span>
       <span class="sr-only tagline__sr">делаю сайты, которые никто не просил</span>
     </p>
 
@@ -133,7 +134,7 @@
     </section>
 
     <footer class="card__foot reveal" style="--i:9">
-      <span class="card__copy">© <span class="js-year">2026</span> sempik · сделано с 💗 и котом</span>
+      <span class="card__copy">© <span class="js-year">2026</span> sempik · сделано с <span class="heart" aria-label="любовью" role="img">&#x2665;&#xFE0E;</span> и котом</span>
       <span class="card__hint">погладь кота · <span class="konami" title="подсказка: Konami code">тут есть секрет</span></span>
     </footer>
   </article>
@@ -166,12 +167,16 @@
     try { rm = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
     var c = navigator.connection || {};
     if (rm || c.saveData) return; // хватит постера
+    // слабое железо (≤4 потоков или ≤4 ГБ памяти) или небольшой экран — хватит 720p:
+    // фон всё равно затемнён, а декодировать и масштабировать 1080p встройке тяжело
+    var weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
     var started = false;
     function go() {
       if (started) return;
       started = true;
       v.preload = "auto";
-      v.src = innerWidth < 900 ? v.getAttribute("data-src-sm") : v.getAttribute("data-src");
+      v.src = innerWidth < 900 || weak || screen.width * (devicePixelRatio || 1) < 1600 ? v.getAttribute("data-src-sm") : v.getAttribute("data-src");
+      if (document.hidden) return; // вкладка в фоне — ui.js запустит видео, когда вернутся
       try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
     }
     if (window.__sempikLoaded) go();
@@ -184,8 +189,7 @@
 
 <div id="splash" role="button" tabindex="0" aria-label="Войти на сайт sempik">
   <div class="splash__fx" aria-hidden="true">
-    <span class="splash__glow splash__glow--a"></span>
-    <span class="splash__glow splash__glow--b"></span>
+    <span class="splash__glow"></span>
     <span class="splash__lines"></span>
     <span class="splash__sweep"></span>
     <span class="splash__petals"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
@@ -195,7 +199,7 @@
     <p class="splash__title" data-text="sempik" aria-hidden="true"><span>sempik</span></p>
     <p class="splash__hint"><span class="splash__hint-text">загрузка…</span></p>
   </div>
-  <p class="splash__foot" aria-hidden="true">🎧 со звуком — лучше</p>
+  <p class="splash__foot" aria-hidden="true"><span class="emo">🎧</span> со звуком — лучше</p>
 </div>
 
 </body>
