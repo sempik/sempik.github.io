@@ -243,6 +243,19 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
   const isMobile = () => (typeof env.mobile === 'boolean' ? env.mobile : innerWidth < 900);
   const sfx = (name) => { try { audio?.[name]?.(); } catch (_) { /* звук не обязателен */ } };
 
+  // three.js r170 требует WebGL2; проверяем заранее на отдельном канвасе, чтобы не сыпать ошибками в консоль
+  const hasGL = (() => {
+    try {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
+      return !!gl;
+    } catch (_) { return false; }
+  })();
+  if (!hasGL) {
+    canvas.style.display = 'none';
+    return stub;
+  }
+
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
@@ -298,7 +311,6 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
     uTime: { value: 0 },
     uParty: { value: 0 },
     uShake: { value: 0 },
-    uReveal: { value: 0 },
   };
 
   // ------------------------------------------------------------ lights
@@ -1170,7 +1182,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       tmpCol.copy(c).lerp(new THREE.Color('#ffffff'), Math.random() * 0.6);
       spark.col[i * 3] = tmpCol.r; spark.col[i * 3 + 1] = tmpCol.g; spark.col[i * 3 + 2] = tmpCol.b;
       spark.max[i] = spark.life[i] = 0.6 + Math.random() * 0.8;
-      spark.size[i] = 0.04 + Math.random() * 0.05;
+      spark.size[i] = 0.05 + Math.random() * 0.07;
     }
     spark.active = 2.0;
   }
@@ -1394,7 +1406,7 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       L.pulse = 1;
       if (e.pointerType !== 'mouse') { hovered = L.i; L.spinT = 0; setTimeout(() => { if (hovered === L.i) hovered = -1; }, 900); }
       L.group.getWorldPosition(tmpV);
-      emitSparks(tmpV, L.link.color || theme.pink, 34, 1.5);
+      emitSparks(tmpV, L.link.color || theme.pink, 46, 1.9);
       try { onLinkActivate?.(L.link); } catch (err) { console.error('[sempik] onLinkActivate', err); }
     } else {
       shakeTree();
@@ -1528,8 +1540,8 @@ export function initScene({ canvas, config = {}, icons = {}, audio = null, env =
       L.spinner.rotateY(sway + hoverSpin + introSpin);
       L.spinner.rotateX(reduced ? 0 : Math.sin(time * 0.6 + L.i) * 0.12 * (1 - L.hoverK));
       L.uHover.value = L.hoverK + L.pulse;
-      L.glow.material.opacity = (0.3 + 0.45 * L.hoverK + 0.5 * L.pulse) * pe;
-      L.glow.scale.setScalar((1.8 + 0.7 * L.hoverK + 0.8 * L.pulse) * Math.max(0.0001, intro));
+      L.glow.material.opacity = (0.3 + 0.7 * L.hoverK + 0.8 * L.pulse) * pe;
+      L.glow.scale.setScalar((1.8 + 1.0 * L.hoverK + 1.4 * L.pulse) * Math.max(0.0001, intro));
     }
 
     // petals
