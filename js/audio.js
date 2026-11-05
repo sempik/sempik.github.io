@@ -23,11 +23,11 @@ const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 // ---------------------------------------------------------------- уровни микса
 const LEVEL = {
   meow: 0.3,
-  purr: 0.95,
-  pop: 0.34,
-  tick: 0.05,
+  purr: 0.7,
+  pop: 0.26,
+  tick: 0.032,
   chime: 0.085,
-  thud: 0.8,
+  thud: 0.5,
   music: 0.52,
 };
 
@@ -206,7 +206,7 @@ function driveCurve(k) {
 
 // ---------------------------------------------------------------- «риг»: общий граф на один контекст
 // голоса → sfx ┐
-// музыка ──────┼→ mix → compressor → out(mute) → destination
+// музыка ──────┼→ mix → compressor → limiter → trim → out(mute) → destination
 // reverb send → verbIn → HP → convolver → LP ┘
 function buildRig(ctx, destination) {
   const dest = destination || ctx.destination;
@@ -217,10 +217,21 @@ function buildRig(ctx, destination) {
   comp.ratio.value = 2.5;
   comp.attack.value = 0.004;
   comp.release.value = 0.25;
+  // страховочный лимитер: даже если всё зазвучит разом, пик не дойдёт до 0 dBFS
+  const lim = ctx.createDynamicsCompressor();
+  lim.threshold.value = -4;
+  lim.knee.value = 0;
+  lim.ratio.value = 20;
+  lim.attack.value = 0.001;
+  lim.release.value = 0.12;
+  const trim = ctx.createGain();
+  trim.gain.value = 0.84;
   const mix = ctx.createGain();
   mix.gain.value = 0.7;
   mix.connect(comp);
-  comp.connect(out);
+  comp.connect(lim);
+  lim.connect(trim);
+  trim.connect(out);
   out.connect(dest);
 
   const sfx = ctx.createGain();
@@ -304,7 +315,7 @@ const MEOWS = {
     round: [[0, 0.2], [0.3, 0], [0.75, 0.15], [1, 0.6]],
     amp: [[0, 0], [0.05, 0.85], [0.3, 1], [0.8, 0.85], [1, 0]],
     am: { rate: 34, type: "sine", depth: [[0, 0.6], [1, 0.6]] },
-    drive: 4, noise: 0.2, bright: 0.96, vib: 8, level: 1.25,
+    drive: 4, noise: 0.2, bright: 0.96, vib: 8, level: 1.1,
   },
 };
 
@@ -426,15 +437,15 @@ function purrVoice(rig, when) {
   out.gain.setTargetAtTime(LEVEL.purr, when, 0.16);
 
   const saw = K.osc("sawtooth", R * 3); // ~75–85 Гц, кратно частоте ударов
-  const sawG = K.gain(0.32);
+  const sawG = K.gain(0.42);
   const nz = K.noise(rig);
-  const nzLP = K.filter("lowpass", 380, 0.7);
+  const nzLP = K.filter("lowpass", 600, 0.7);
   const nzG = K.gain(1.0);
   const sum = K.gain();
   saw.connect(sawG).connect(sum);
   nz.connect(nzLP).connect(nzG).connect(sum);
 
-  const lp = K.filter("lowpass", 300, 1.1);
+  const lp = K.filter("lowpass", 440, 1.1);
   sum.connect(lp);
   const am = K.gain(purrPulse.mean); // DC + волна = форма удара 0..1
   lp.connect(am);
@@ -559,7 +570,7 @@ function chimeBar(rig, t, f, v, p) {
     g.gain.setTargetAtTime(0, t + 0.0025, tau);
     o.connect(g).connect(pan);
     o.start(t);
-    o.stop(t + tau * 8 + 0.05);
+    o.stop(t + tau * 6 + 0.05); // ≈ −52 дБ от пика — дальше не слышно
     if (ratio === 1) last = o;
   }
   track(rig, last, nodes);
@@ -611,7 +622,7 @@ function thudVoice(rig, when) {
   o.frequency.exponentialRampToValueAtTime(48 * r, when + 0.16);
   const g = K.gain(0);
   g.gain.setValueAtTime(0, when);
-  g.gain.linearRampToValueAtTime(LEVEL.thud, when + 0.006);
+  g.gain.linearRampToValueAtTime(LEVEL.thud * 0.42, when + 0.006);
   g.gain.setTargetAtTime(0, when + 0.006, 0.075);
   o.connect(g).connect(sum);
 
@@ -620,7 +631,7 @@ function thudVoice(rig, when) {
   b.frequency.exponentialRampToValueAtTime(115 * r, when + 0.08);
   const g2 = K.gain(0);
   g2.gain.setValueAtTime(0, when);
-  g2.gain.linearRampToValueAtTime(LEVEL.thud * 0.3, when + 0.004);
+  g2.gain.linearRampToValueAtTime(LEVEL.thud * 0.45, when + 0.004);
   g2.gain.setTargetAtTime(0, when + 0.004, 0.035);
   b.connect(g2).connect(sum);
 
@@ -628,7 +639,7 @@ function thudVoice(rig, when) {
   const nlp = K.filter("lowpass", 700, 0.7);
   const g3 = K.gain(0);
   g3.gain.setValueAtTime(0, when);
-  g3.gain.linearRampToValueAtTime(LEVEL.thud * 0.42, when + 0.003);
+  g3.gain.linearRampToValueAtTime(LEVEL.thud * 0.28, when + 0.003);
   g3.gain.setTargetAtTime(0, when + 0.003, 0.028);
   nz.connect(nlp).connect(g3).connect(sum);
 
