@@ -508,7 +508,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     if (cached) { render(cached); return; }
 
     const ctrl = typeof AbortController === "function" ? new AbortController() : null;
-    const to = setTimeout(() => ctrl?.abort(), 10000);
+    const to = setTimeout(() => ctrl?.abort(), 25000);
     const opts = { signal: ctrl?.signal, headers: { Accept: "application/vnd.github+json" } };
     const base = `https://api.github.com/users/${encodeURIComponent(user)}`;
     const json = (r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))));

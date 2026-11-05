@@ -834,7 +834,8 @@ html.entered .controls {
   left: 50%;
   bottom: calc(28px + env(safe-area-inset-bottom));
   z-index: 90;
-  max-width: min(420px, calc(100vw - 32px));
+  width: max-content;
+  max-width: min(440px, calc(100vw - 32px));
   padding: 12px 20px;
   border-radius: 999px;
   font: 600 14px/1.3 var(--f-body);
@@ -1030,7 +1031,7 @@ html.kex-laser .trail-petal { display: none; }
   margin: 0;
   font-family: var(--f-display);
   font-weight: 800;
-  font-size: clamp(68px, 15.5vw, 220px);
+  font-size: clamp(54px, 15.5vw, 220px);
   line-height: 0.9;
   letter-spacing: -0.05em;
   color: #fff;
@@ -1210,6 +1211,23 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .link { min-height: 56px; }
   .gh__head { margin-top: 16px; }
   .card__foot { margin-top: 14px; padding-top: 11px; }
+}
+
+/* большие мониторы — карточка чуть крупнее, чтобы не потерялась */
+@media (min-width: 1680px) and (min-height: 940px) {
+  .card { width: 520px; padding: 36px 36px 22px; }
+  .avatar { width: 98px; height: 98px; }
+  .card__head { gap: 22px; }
+  .name { font-size: 58px; }
+  .status { font-size: 12px; }
+  .tagline { font-size: 14.5px; margin-top: 24px; }
+  .about { font-size: 16px; }
+  .links { margin-top: 24px; }
+  .link { min-height: 68px; }
+  .link__name { font-size: 14.5px; }
+  .link__sub { font-size: 12px; }
+  .link__icon { width: 44px; height: 44px; }
+  .gh__stats li, .gh__repo { font-size: 12px; }
 }
 
 @media (max-width: 899.98px) {
