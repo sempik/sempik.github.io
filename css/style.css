@@ -128,16 +128,33 @@ button { font: inherit; color: inherit; }
   position: absolute;
   inset: 0;
   background:
+    radial-gradient(40% 50% at 68% 50%, rgba(7, 5, 12, 0.25), rgba(7, 5, 12, 0) 70%),
     linear-gradient(90deg, rgba(7, 5, 12, 0.86) 0%, rgba(7, 5, 12, 0.62) 26%, rgba(7, 5, 12, 0.18) 50%, rgba(7, 5, 12, 0) 66%),
     radial-gradient(120% 95% at 62% 48%, rgba(7, 5, 12, 0) 52%, rgba(7, 5, 12, 0.78) 100%);
 }
+/* вечеринка: радужный оттенок — отдельным слоем поверх видео (фильтр на самом видео дорогой) */
+.bg-shade::after {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(from 0deg at 50% 50%, #ff3d9a, #ffb84d, #fff27a, #5dffb4, #5ad1ff, #9b7bff, #ff3d9a);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  pointer-events: none;
+}
+html.party .bg-shade::after {
+  opacity: 0.13;
+  animation: partySpin 14s linear infinite;
+}
+@keyframes partySpin { to { transform: rotate(1turn); } }
 
 .grain {
   position: absolute;
   inset: -60px;
-  opacity: 0.075;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* без mix-blend-mode: смешивание поверх видео пересчитывалось бы каждый кадр.
+     Сама текстура — светлые крупинки с прозрачностью (альфа из шума) */
+  opacity: 0.09;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1  0 0 0 0 0.95  0 0 0 0 1  2.2 0 0 0 -1.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 200px 200px;
   animation: grain 0.9s steps(1) infinite;
   will-change: transform;
@@ -333,6 +350,8 @@ html.js.entered .reveal {
   transition: transform 0.6s var(--ease-out);
 }
 .avatar:hover .avatar__img img { transform: scale(1.82); }
+.avatar { cursor: pointer; }
+.avatar:focus-visible { outline: 2px solid var(--pink); outline-offset: 7px; border-radius: 50%; }
 .avatar.is-boop { animation: boop 0.5s var(--ease-back); }
 .avatar__dot {
   position: absolute;
@@ -640,39 +659,33 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 20px 0 9px;
+  margin: 18px 0 8px;
   font: 500 10.5px/1 var(--f-mono);
+  color: var(--muted);
+}
+.gh__label {
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  color: var(--muted);
 }
 .gh__head::after {
   content: "";
+  order: 1;
   flex: 1;
+  min-width: 12px;
   height: 1px;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), transparent);
 }
-.gh__live {
+.gh__stats {
   order: 2;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: var(--pink);
-  letter-spacing: 0.12em;
+  gap: 7px;
+  font: 400 11px/1.2 var(--f-mono);
+  color: #b9aed0;
+  white-space: nowrap;
 }
-.gh__pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--pink);
-  box-shadow: 0 0 0 0 rgba(255, 140, 198, 0.6);
-  animation: livePulse 2.4s ease-out infinite;
-}
-@keyframes livePulse {
-  0% { box-shadow: 0 0 0 0 rgba(255, 140, 198, 0.55); }
-  70%, 100% { box-shadow: 0 0 0 7px rgba(255, 140, 198, 0); }
-}
-.gh__stats,
+.gh__stats b { font-weight: 500; color: #e6dcfa; }
+.gh__stats i { font-style: normal; opacity: 0.5; }
 .gh__repos {
   list-style: none;
   margin: 0;
@@ -680,33 +693,18 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
 }
-.gh__stats li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  font: 400 11.5px/1.2 var(--f-mono);
-  color: #cfc4e6;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.075);
-}
-.gh__stats b { font-weight: 500; color: var(--ink); }
-.gh__stats svg { width: 13px; height: 13px; fill: none; stroke: var(--pink); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-
 .gh__recent {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 8px;
-  margin-top: 8px;
 }
 .gh__recent[hidden] { display: none; }
 .gh__recent-label {
   font: 400 10.5px/1 var(--f-mono);
-  color: var(--muted);
-  opacity: 0.8;
+  color: #b9aed0;
 }
 .gh__repo {
   display: inline-flex;
@@ -748,11 +746,10 @@ html.entered .gh.is-ready { opacity: 1; transition-delay: 0s, 1.05s; }
   color: var(--muted);
 }
 .card__hint {
-  font: 400 10.5px/1.3 var(--f-mono);
-  color: var(--muted);
-  opacity: 0.72;
+  font: 400 11px/1.3 var(--f-mono);
+  color: #b9aed0;
 }
-.konami { letter-spacing: 0.08em; color: #cdb9e6; }
+.konami { color: #d9c8f2; cursor: help; text-decoration: underline dotted rgba(217, 200, 242, 0.45); text-underline-offset: 3px; }
 
 /* =========================================================================
    4. Кнопки звука
@@ -945,6 +942,8 @@ html.entered .controls {
   will-change: transform;
 }
 .cursor-glow.is-on { opacity: 1; }
+/* над карточкой светлячок почти гаснет — не мажет стекло и кнопки */
+.cursor-glow.is-on.is-dim { opacity: 0.18; }
 .trail-petal {
   position: fixed;
   left: 0;
@@ -1124,15 +1123,15 @@ html.kex-laser .trail-petal { display: none; }
 .splash__title::before {
   z-index: 1;
   color: var(--hot);
-  transform: translate(-0.02em, 0.006em);
-  opacity: 0.9;
+  transform: translate(-0.006em, 0);
+  opacity: 0.5;
   animation: glitchA 4.2s steps(1) 1.4s infinite;
 }
 .splash__title::after {
   z-index: 3;
   color: var(--cyan);
-  transform: translate(0.02em, -0.006em);
-  opacity: 0.55;
+  transform: translate(0.006em, 0);
+  opacity: 0.3;
   animation: glitchB 4.2s steps(1) 1.4s infinite;
 }
 @keyframes titleIn {
@@ -1140,23 +1139,23 @@ html.kex-laser .trail-petal { display: none; }
   to { opacity: 1; transform: none; filter: blur(0); letter-spacing: -0.05em; }
 }
 @keyframes glitchA {
-  0%, 78%, 100% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.02em, 0.006em); }
-  80% { clip-path: inset(14% 0 62% 0); transform: translate(-0.09em, 0); }
-  82% { clip-path: inset(58% 0 18% 0); transform: translate(0.06em, 0.01em); }
-  84% { clip-path: inset(32% 0 44% 0); transform: translate(-0.05em, 0); }
-  86% { clip-path: inset(78% 0 4% 0); transform: translate(0.04em, 0); }
-  88% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.02em, 0.006em); }
-  93% { clip-path: inset(44% 0 40% 0); transform: translate(0.08em, 0); }
-  94% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.02em, 0.006em); }
+  0%, 78%, 100% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.006em, 0); opacity: 0.5; }
+  80% { clip-path: inset(14% 0 62% 0); transform: translate(-0.09em, 0); opacity: 0.9; }
+  82% { clip-path: inset(58% 0 18% 0); transform: translate(0.06em, 0.01em); opacity: 0.9; }
+  84% { clip-path: inset(32% 0 44% 0); transform: translate(-0.05em, 0); opacity: 0.9; }
+  86% { clip-path: inset(78% 0 4% 0); transform: translate(0.04em, 0); opacity: 0.9; }
+  88% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.006em, 0); opacity: 0.5; }
+  93% { clip-path: inset(44% 0 40% 0); transform: translate(0.08em, 0); opacity: 0.9; }
+  94% { clip-path: inset(-40% -6% -40% -6%); transform: translate(-0.006em, 0); opacity: 0.5; }
 }
 @keyframes glitchB {
-  0%, 78%, 100% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.02em, -0.006em); }
-  80% { clip-path: inset(66% 0 10% 0); transform: translate(0.08em, 0); }
-  82% { clip-path: inset(8% 0 70% 0); transform: translate(-0.07em, -0.01em); }
-  84% { clip-path: inset(40% 0 36% 0); transform: translate(0.05em, 0); }
-  86% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.02em, -0.006em); }
-  92% { clip-path: inset(20% 0 64% 0); transform: translate(-0.06em, 0); }
-  93% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.02em, -0.006em); }
+  0%, 78%, 100% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.006em, 0); opacity: 0.3; }
+  80% { clip-path: inset(66% 0 10% 0); transform: translate(0.08em, 0); opacity: 0.6; }
+  82% { clip-path: inset(8% 0 70% 0); transform: translate(-0.07em, -0.01em); opacity: 0.6; }
+  84% { clip-path: inset(40% 0 36% 0); transform: translate(0.05em, 0); opacity: 0.6; }
+  86% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.006em, 0); opacity: 0.3; }
+  92% { clip-path: inset(20% 0 64% 0); transform: translate(-0.06em, 0); opacity: 0.6; }
+  93% { clip-path: inset(-40% -6% -40% -6%); transform: translate(0.006em, 0); opacity: 0.3; }
 }
 @keyframes glitchMain {
   0%, 79%, 100% { transform: none; }
@@ -1236,12 +1235,6 @@ html.kex-laser .trail-petal { display: none; }
 /* =========================================================================
    8. Режим вечеринки (Konami)
    ========================================================================= */
-html.party #bg-video { animation: partyHue 7s ease-in-out infinite; }
-@keyframes partyHue {
-  0%, 100% { filter: hue-rotate(0deg) saturate(1.1); }
-  33% { filter: hue-rotate(-55deg) saturate(1.35); }
-  66% { filter: hue-rotate(40deg) saturate(1.3); }
-}
 html.party .card::before {
   padding: 1.5px;
   background: conic-gradient(from var(--rb), #ff3d9a, #ffb84d, #fff27a, #5dffb4, #5ad1ff, #9b7bff, #ff3d9a);
@@ -1277,10 +1270,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .about { font-size: 14px; line-height: 1.55; }
   .links { margin-top: 16px; }
   .link { min-height: 56px; }
-  .gh__head { margin-top: 16px; }
-  .gh__stats li { padding: 5px 8px; font-size: 11px; }
-  .gh__stats svg { display: none; }
-  .gh__recent { margin-top: 6px; }
+  .gh__head { margin: 14px 0 7px; }
   .card__foot { margin-top: 14px; padding-top: 11px; }
 }
 
@@ -1294,7 +1284,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .name { font-size: clamp(32px, 2.7vw, 40px); }
   .status { margin-top: 9px; }
   .tagline { margin-top: 12px; font-size: 13px; }
-  .about { margin-top: 6px; font-size: 13.5px; line-height: 1.5; }
+  .about { margin-top: 6px; font-size: 14px; line-height: 1.5; }
   .links { margin-top: 12px; }
   .links__list { gap: 8px; }
   .link { min-height: 50px; padding-top: 7px; padding-bottom: 7px; }
@@ -1318,7 +1308,7 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .link__name { font-size: 14.5px; }
   .link__sub { font-size: 12px; }
   .link__icon { width: 44px; height: 44px; }
-  .gh__stats li, .gh__repo { font-size: 12px; }
+  .gh__stats, .gh__repo { font-size: 12px; }
 }
 
 @media (max-width: 899.98px) {
@@ -1328,31 +1318,57 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
       radial-gradient(130% 80% at 50% 26%, rgba(7, 5, 12, 0) 45%, rgba(7, 5, 12, 0.7) 100%);
   }
   #bg-video { object-position: 68% 50%; }
+  /* остров сверху (scene3d: центр на 22% высоты), карточка ниже — между ними воздух для кота */
   .ui {
     display: block;
-    padding: 40vh var(--gutter) calc(64px + env(safe-area-inset-bottom));
-    padding-top: 40svh;
+    padding: 44vh var(--gutter) calc(64px + env(safe-area-inset-bottom));
+    padding-top: 44svh;
     padding-left: max(var(--gutter), env(safe-area-inset-left));
     padding-right: max(var(--gutter), env(safe-area-inset-right));
   }
+  /* на телефоне без backdrop-filter (дорого поверх видео и 3D) — стекло просто плотнее */
   .card {
     width: 100%;
     max-width: 540px;
     margin: 0 auto;
     padding: 26px 22px 18px;
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
-    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     background:
       radial-gradient(120% 60% at 0% 0%, rgba(155, 123, 255, 0.16), transparent 60%),
       radial-gradient(110% 60% at 100% 100%, rgba(255, 61, 154, 0.11), transparent 60%),
-      rgba(14, 8, 26, 0.64);
+      rgba(14, 8, 26, 0.88);
   }
   .card__head { gap: 16px; }
   .avatar { width: 76px; height: 76px; }
   .name { font-size: clamp(32px, 9.4vw, 44px); }
   .about { font-size: 14.5px; }
   .link { min-height: 60px; }
-  #toast { bottom: calc(22px + env(safe-area-inset-bottom)); }
+  /* тост сверху, под рядом кнопок: внизу он закрывал бы ссылки карточки */
+  #toast {
+    top: calc(72px + env(safe-area-inset-top));
+    bottom: auto;
+    transform: translate(-50%, -18px) scale(0.94);
+  }
+  #toast.is-on { transform: translate(-50%, 0) scale(1); }
+}
+
+/* телефон боком: как на десктопе — карточка слева, остров справа (scene3d: центр на 75% ширины) */
+@media (max-width: 899.98px) and (orientation: landscape) and (max-height: 560px) {
+  .ui {
+    padding-top: 122px;
+    padding-left: max(var(--gutter), env(safe-area-inset-left));
+    padding-right: 0;
+  }
+  .card {
+    width: min(52vw, 460px);
+    margin: 0;
+  }
+  .bg-shade {
+    background:
+      linear-gradient(90deg, rgba(7, 5, 12, 0.8) 0%, rgba(7, 5, 12, 0.5) 40%, rgba(7, 5, 12, 0) 62%),
+      radial-gradient(120% 95% at 70% 50%, rgba(7, 5, 12, 0) 52%, rgba(7, 5, 12, 0.7) 100%);
+  }
 }
 
 @media (max-width: 374.98px) {
@@ -1375,7 +1391,6 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   .avatar__ring,
   .avatar__glow,
   .name__text,
-  .gh__pulse,
   .splash__glow,
   .splash__sweep,
   .splash__title,
@@ -1404,6 +1419,6 @@ html.party .cursor-glow { background: radial-gradient(circle, rgba(255, 242, 122
   /* .link / .link__icon оставляем со своим translate3d: при reduced motion --mx/--my всегда 0 (ui.js
      не вешает «магнит»), а отдельный слой у кнопки убирает артефакты отрисовки градиентного фона */
   .link:hover .link__icon svg { transform: none; }
-  html.party #bg-video { animation: none; filter: hue-rotate(-40deg) saturate(1.3); }
+  html.party .bg-shade::after { animation: none; }
   html.party .card::before { animation: none; }
 }

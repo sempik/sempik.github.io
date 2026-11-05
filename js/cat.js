@@ -172,14 +172,32 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
   const wallL = () => 28 * K;
   const wallR = () => W - 28 * K;
-  const surfL = (s) => (s.floor ? wallL() : Math.max(s.left, wallL()));
-  const surfR = (s) => (s.floor ? wallR() : Math.min(s.right, wallR()));
+  // пол, где коту можно стоять: не под кнопками игрушек (десктоп, слева внизу)
+  // и не в правом нижнем углу (~120×120 — место для хрома)
+  let toysRight = 0;
+  const floorL = () => Math.max(wallL(), toysRight ? toysRight + 34 * K : 0);
+  const floorR = () => Math.max(floorL() + 40, Math.min(wallR(), W - 120 - 26 * K));
+  const surfL = (s) => (s.floor ? floorL() : Math.max(s.left, wallL()));
+  const surfR = (s) => (s.floor ? floorR() : Math.min(s.right, wallR()));
+  // 3D-герой (остров с деревом) на экране — присылает scene3d.js; пузырь реплики его не закрывает
+  let heroBox = null;
+  window.addEventListener("sempik:hero", (e) => { heroBox = e?.detail || null; });
 
   // ---------------------------------------------------------------- платформы ([data-cat-platform])
   const platMap = new Map();
   let plats = [];
   let platScanT = 0;
+  function measureToys() {
+    toysRight = 0;
+    try {
+      if (toysShown && !isMobile()) {
+        const r = toysEl.getBoundingClientRect();
+        if (r.width > 0 && r.bottom > H - 160) toysRight = r.right;
+      }
+    } catch (_) { /* ок */ }
+  }
   function scanPlatforms() {
+    measureToys();
     const els = document.querySelectorAll("[data-cat-platform]");
     const next = [];
     els.forEach((el) => {
@@ -195,8 +213,12 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     }
     plats = next;
   }
+  // телефон: верхняя кромка карточки уезжает под ряд кнопок и затемнение (92px) — кот спрыгивает заранее
+  const MOB_STAY = 140;
+  const scrolledNow = () => (window.scrollY || document.documentElement.scrollTop || 0) > 24;
   function measurePlatforms() {
     const minTop = 96 * K;
+    const stayTop = isMobile() && scrolledNow() ? MOB_STAY : 26 * K;
     for (let i = 0; i < plats.length; i++) {
       const p = plats[i];
       if (!p.el.isConnected) { p.valid = p.stay = false; continue; }
@@ -206,7 +228,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       p.right = r.right - 16 * K;
       const shown = r.width > 90 && r.height > 8 && r.left < W - 40 && r.right > 40;
       p.valid = shown && r.top > minTop && r.top < FLOOR - 70;
-      p.stay = shown && r.top > 26 * K && r.top < FLOOR - 50;
+      p.stay = shown && r.top > stayTop && r.top < FLOOR - 50;
     }
   }
   // самая высокая поверхность на уровне y или ниже
@@ -401,9 +423,23 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   function startTask(t) { t.t = 0; if (t.dur == null) t.dur = Infinity; cat.task = t; }
   function setDir(d) { if (d && d !== cat.dir) cat.dir = d; }
 
+  // платформа, на которую коту на телефоне можно вернуться (видна и не под кнопками)
+  function mobileHome() {
+    const minT = scrolledNow() ? MOB_STAY + 20 : 0;
+    for (const p of plats) if (p.valid && p.stay && p.top > minT && p.top < H * 0.8 && p.right - p.left > 60 * K) return p;
+    return null;
+  }
   function think() {
     if (cat.mode !== "ground") return;
     const t = now();
+    // телефон: пол — это низ экрана поверх ссылок карточки. Без игрушек кот там не сидит:
+    // запрыгивает обратно на карточку, а если её не видно — убегает за край экрана и ждёт
+    if (isMobile() && cat.surf.floor && !laser.on && !(yarn.on && !yarn.dying)) {
+      const home = mobileHome();
+      if (home && canJumpTo(home)) { planJump(home, null, null, 170); return; }
+      setTask("leave", { dir: cat.x < W / 2 ? -1 : 1 });
+      return;
+    }
     if (party) { setTask("dance"); return; }
     if (laser.on) { setTask("hunt", { sub: "track", subT: 0, cool: 0 }); return; }
     if (yarn.on && !yarn.dying && t > yarn.boredUntil) { setTask("yarn", { sub: "chase", subT: 0, cool: 0.2, play: 0 }); return; }
@@ -440,7 +476,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     const s = cat.surf;
     const cands = [];
     for (const p of plats) if (p.valid && p !== s && canJumpTo(p)) cands.push(p);
-    if (!s.floor) cands.push(floorSurf);
+    if (!s.floor && !isMobile()) cands.push(floorSurf);
     if (!cands.length) return false;
     const target = cands[(Math.random() * cands.length) | 0];
     planJump(target, null);
@@ -516,7 +552,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     cat.sqv += clamp(impact / 1500, 0.12, 0.6) * 9;
     if (impact > 650 || (wasTumble && impact > 250)) {
       const n = RM ? 3 : 7;
-      for (let i = 0; i < n; i++) emit(DUST, cat.x + rand(-26, 26) * K, s.top - 2, rand(-90, 90), rand(-40, -10), rand(0.45, 0.7), rand(3, 6) * K);
+      for (let i = 0; i < n; i++) emit(DUST, cat.x + rand(-26, 26) * K, s.top - 2, rand(-90, 90), rand(-40, -10), rand(0.3, 0.45), rand(1.8, 3.6) * K);
       sfx("thud");
     }
     const pounce = cat.pounce;
@@ -549,6 +585,42 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
   function goSleep() {
     setTask("sleep");
+  }
+  // кот «ушёл» за край экрана (телефон): не рисуется и не ловит касания, пока карточка не вернётся
+  let awayT = 0;
+  function goAway() {
+    cat.mode = "away";
+    cat.vis = false;
+    cat.task = null;
+    cat.vx = cat.vy = 0;
+    bub.on = false; bub.placed = false;
+    awayT = 0;
+    if (pet.active) pet.active = false;
+    if (pet.purring) { sfx("stopPurr"); pet.purring = false; }
+    setCursor("");
+  }
+  // вернуться: спрыгнуть сверху на карточку (или к игрушке, если с ней играют)
+  function comeBack(p) {
+    let x;
+    if (p) x = lerp(surfL(p), surfR(p), rand(0.55, 0.85));
+    else if (laser.on && laser.has) x = laser.x + rand(-60, 60) * K;
+    else if (yarn.on) x = yarn.x + rand(-60, 60) * K;
+    else x = W * 0.5;
+    cat.x = clamp(x, wallL(), wallR());
+    cat.y = -95 * K;
+    cat.vx = 0;
+    cat.vy = RM ? 300 : 120;
+    cat.rot = RM ? 0 : -1.2;
+    cat.vrot = RM ? 0 : 6;
+    cat.dir = cat.face = cat.x > W * 0.6 ? -1 : 1;
+    cat.vis = true;
+    takeOff(!RM);
+    cat.thrown = false;
+    if (p) cat.landOn = p;
+    P.surprise = 1;
+    computePose();
+    tailSnap();
+    if (Math.random() < 0.5) setTimeout(() => { if (cat.vis) say(pickFresh(["я вернулся", "мяу, я тут", "соскучились?"]), 2); }, 650);
   }
   function wake(say_ = true) {
     if (cat.task?.type !== "sleep") return false;
@@ -773,6 +845,16 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
         TG.crouch = 0.6; TG.lookY = 0.9; TG.lookX = 0.6; TG.pupil = 1.3; TG.earFwd = 1;
         tail(3.0, 0.02, 1, 0.1, 1.5, 0.2, 1);
         if (done) think();
+        break;
+      }
+      case "leave": {
+        // убегает за край экрана (телефон, карточка уехала)
+        tail(3.35, 0.02, 1, 0.08, 1.2, 0, 1);
+        setDir(t.dir);
+        if (P.sit < 0.35 && P.loaf < 0.35) cat.vx = toward(cat.vx, t.dir * 290 * K / 1.25, 1100 * dt);
+        cat.moved = true;
+        if ((t.dir < 0 && cat.x < -70 * K) || (t.dir > 0 && cat.x > W + 70 * K)) goAway();
+        else if (t.t > 6) goAway();
         break;
       }
       case "jumpdbg": if (!planWander()) think(); break;
@@ -1062,9 +1144,13 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
         cat.rot = wrapAngle(cat.rot);
         const below = surfaceBelow(cat.x, cat.y).top;
         const dist = below - cat.y;
-        const tLeft = cat.vy > 0 ? dist / cat.vy : 9;
-        if (cat.vy > -200 && (tLeft < 0.42 || dist < 150)) cat.vrot += (-cat.rot * 95 - cat.vrot * 15) * dt;
-        else cat.vrot *= 0.999;
+        // время до касания с учётом гравитации: dist = vy·t + G·t²/2
+        const tLeft = dist > 0 ? (-cat.vy + Math.sqrt(Math.max(0, cat.vy * cat.vy + 2 * G * dist))) / G : 0;
+        if (cat.vy > -200 && (tLeft < 0.42 || dist < 150)) {
+          // чем меньше времени осталось, тем жёстче «пружина» — кот успевает встать на лапы
+          const w = clamp(4 / Math.max(tLeft, 0.02), 9.75, 45);
+          cat.vrot += (-cat.rot * w * w - cat.vrot * 1.55 * w) * dt;
+        } else cat.vrot *= 0.999;
         cat.rot += cat.vrot * dt;
       } else cat.rot = 0;
       if (cat.vy > 0) {
@@ -1898,8 +1984,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
         ctx.fillText(p.c === 0 ? "z" : "Z", p.x, p.y);
         ctx.shadowBlur = 0;
       } else if (p.k === DUST) {
-        ctx.fillStyle = "rgba(225,210,250,0.55)";
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (0.6 + u), 0, TAU); ctx.fill();
+        ctx.fillStyle = "rgba(255,205,232,0.32)";
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (0.6 + 0.7 * u), 0, TAU); ctx.fill();
       } else if (p.k === SPARK) {
         ctx.fillStyle = theme.pink;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (1 - u), 0, TAU); ctx.fill();
@@ -1940,7 +2026,9 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     let bx = clamp(bub.x - w / 2, 8, W - w - 8);
     let by = bub.y - h - 8;
     let side = 0; // 0 — хвостик вниз, 1 — пузырь справа (хвостик влево), -1 — слева
-    if (by < 8) {
+    const hb = heroBox;
+    const onHero = !!hb && bx < hb.x + hb.w && bx + w > hb.x && by < hb.y + hb.h && by + h > hb.y;
+    if (by < 8 || onHero) {
       const hx = headWX, gap = 30 * K;
       side = hx + gap + w + 8 < W ? 1 : -1;
       bx = side > 0 ? hx + gap : hx - gap - w;
@@ -2028,13 +2116,29 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
         taskUpdate(dt);
       }
     }
+    if (cat.mode === "away") {
+      // ждём, пока карточка снова покажется (или позовут игрушкой) — и спрыгиваем обратно
+      awayT += dt;
+      if (awayT > 0.7) {
+        const home = isMobile() ? mobileHome() : plats.find((q) => q.valid && q.stay) || null;
+        if (home || !isMobile() || laser.on || (yarn.on && !yarn.dying)) comeBack(home);
+      }
+    }
     if (cat.mode === "ground") {
       if (!cat.moved) cat.vx = toward(cat.vx, 0, 900 * dt);
       cat.x += cat.vx * dt;
       const s = cat.surf;
       const l = surfL(s), r = surfR(s);
-      if (cat.x < l - 2) { cat.x = l; cat.vx = Math.max(cat.vx, 0); }
-      if (cat.x > r + 2) { cat.x = r; cat.vx = Math.min(cat.vx, 0); }
+      const tt = cat.task?.type;
+      if (s.floor) {
+        // вне «разрешённого» пола (под игрушками, в правом нижнем углу) не телепортируемся, а уходим ногами
+        if ((cat.x < l - 2 || cat.x > r + 2) && tt !== "leave" && tt !== "walk" && tt !== "prep" && tt !== "land" && tt !== "petted") {
+          setTask("walk", { tx: clamp(cat.x, l, r), speed: 140 * K / 1.25 });
+        }
+      } else {
+        if (cat.x < l - 2) { cat.x = l; cat.vx = Math.max(cat.vx, 0); }
+        if (cat.x > r + 2) { cat.x = r; cat.vx = Math.min(cat.vx, 0); }
+      }
       if (!s.floor && (cat.x < s.left - 14 * K || cat.x > s.right + 14 * K)) fall();
       const spd = Math.abs(cat.vx) / K;
       TG.move = clamp(spd / 22, 0, 1);
@@ -2153,6 +2257,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
   // ================================================================ ВВОД
   let grab = null; // { id, what: 1 кот | 2 клубок, sx, sy, t0, dragging, touch, moved }
+  let laserTouch = -1; // pointerId пальца, который водит лазер
   let swallowUntil = 0;
   let cursorMode = "";
   const de = document.documentElement;
@@ -2165,24 +2270,42 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     de.style.cursor = m || origCursor;
   }
 
-  function hitCat(x, y, pad) {
-    if (!cat.vis || cat.mode === "hidden") return false;
+  // precise: дополнительно проверяем настоящие пиксели кота на холсте (только на нажатие — это чтение с GPU)
+  function hitCat(x, y, pad, precise = false) {
+    if (!cat.vis || cat.mode === "hidden" || cat.mode === "away") return false;
     // во время подскока от клика считаем попаданием и место, где кот стоял
     if (cat.hop && cat.mode === "air" && cat.landOn) {
       const lift = cat.landOn.top - cat.y;
       if (lift > 2 && hitCatAt(x, y - lift, pad)) return true;
     }
-    return hitCatAt(x, y, pad);
+    if (!hitCatAt(x, y, pad)) return false;
+    return precise ? pixelHit(x, y, pad + 2) : true;
   }
   function hitCatAt(x, y, pad) {
     let dx = x - headWX, dy = y - headWY;
-    const hr = 23 * K + pad;
+    const hr = 20 * K + pad;
     if (dx * dx + dy * dy < hr * hr) return true;
     dx = x - bodyWX; dy = y - bodyWY;
     const c = Math.cos(-cat.rot), s = Math.sin(-cat.rot);
     const lx = dx * c - dy * s, ly = dx * s + dy * c;
-    const rx = (30 - 6 * P.sit) * K + pad, ry = (18 + 8 * P.sit) * K + pad;
+    // лёжа (loaf/сон) тело ниже и площе
+    const sit = P.sit, loaf = P.loaf;
+    const rx = (29 - 6 * sit + 3 * loaf) * K + pad, ry = (17 + 7 * sit - 5 * loaf) * K + pad;
     return (lx * lx) / (rx * rx) + (ly * ly) / (ry * ry) < 1;
+  }
+  // есть ли непрозрачные пиксели кота в радиусе r вокруг точки
+  function pixelHit(x, y, r) {
+    try {
+      const d = Math.max(1, Math.round(r * DPR));
+      const px = Math.round(x * DPR), py = Math.round(y * DPR);
+      const x0 = clamp(px - d, 0, canvas.width - 1), y0 = clamp(py - d, 0, canvas.height - 1);
+      const w = Math.max(1, Math.min(2 * d + 1, canvas.width - x0)), h = Math.max(1, Math.min(2 * d + 1, canvas.height - y0));
+      const data = ctx.getImageData(x0, y0, w, h).data;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 60) return true;
+      return false;
+    } catch (_) {
+      return true; // прочитать не вышло — верим геометрии
+    }
   }
   function hitYarn(x, y, pad) {
     if (!yarn.on || yarn.dying) return false;
@@ -2212,16 +2335,28 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     trackPtr(e);
     ptr.down = true;
     swallowUntil = 0; // новый жест — прошлый «съеденный» клик больше не ждём
-    if (laser.on && e.pointerType === "touch") laserTo(e.clientX, e.clientY);
-    if (!cat.vis || grab) return;
+    if (grab || laserTouch !== -1) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const touch = e.pointerType === "touch" || e.pointerType === "pen";
-    const pad = touch ? 14 : 3;
+    const pad = touch ? 6 : 0;
     let what = 0;
-    if (hitYarn(e.clientX, e.clientY, pad + 6)) what = 2;
-    else if (hitCat(e.clientX, e.clientY, pad)) what = 1;
-    if (!what) return;
-    if (overChrome(e.target)) return;
+    if (cat.vis || yarn.on) {
+      if (hitYarn(e.clientX, e.clientY, pad + 6)) what = 2;
+      else if (hitCat(e.clientX, e.clientY, pad, true)) what = 1;
+    }
+    if (what && overChrome(e.target)) return;
+    if (!what) {
+      // лазер на телефоне: палец водит точку. Жест забираем целиком — иначе браузер начинает
+      // скроллить (pointercancel), а тап «насквозь» открывает ссылку под пальцем
+      if (laser.on && touch && !overChrome(e.target)) {
+        laserTo(e.clientX, e.clientY);
+        swallow(e);
+        swallowUntil = performance.now() + 900;
+        laserTouch = e.pointerId;
+      }
+      return;
+    }
+    if (laser.on && touch) laserTo(e.clientX, e.clientY);
     swallow(e);
     swallowUntil = performance.now() + 900;
     grab = { id: e.pointerId, what, sx: e.clientX, sy: e.clientY, t0: now(), dragging: false, touch, moved: 0, petted: false, flips: 0 };
@@ -2259,9 +2394,12 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       }
       return;
     }
+    if (laserTouch !== -1 && e.pointerId === laserTouch) { swallow(e); return; }
     if (e.pointerType === "mouse" && cat.vis) {
-      const overCat = hitCat(e.clientX, e.clientY, 2);
-      const overBall = !overCat && hitYarn(e.clientX, e.clientY, 4);
+      let overCat = hitCat(e.clientX, e.clientY, 0);
+      let overBall = !overCat && hitYarn(e.clientX, e.clientY, 4);
+      // кнопки (игрушки, звук) рисуются поверх кота: под ними кота не гладим и курсор не меняем
+      if ((overCat || overBall) && overChrome(e.target)) overCat = overBall = false;
       setCursor(overCat || overBall ? "grab" : "");
       if (overCat && !e.buttons) {
         if (!pet.hover) { pet.hover = true; petReset(e.clientX, e.clientY); }
@@ -2279,6 +2417,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   function onUp(e) {
     trackPtr(e);
     ptr.down = false;
+    if (laserTouch !== -1 && e.pointerId === laserTouch) { laserTouch = -1; swallow(e); return; }
     if (!grab || e.pointerId !== grab.id) return;
     swallow(e);
     const g = grab;
@@ -2296,11 +2435,12 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       yarn.ground = false;
       nudgeYarnInterest();
     }
-    setCursor(e.pointerType === "mouse" && hitCat(e.clientX, e.clientY, 2) ? "grab" : "");
+    setCursor(e.pointerType === "mouse" && hitCat(e.clientX, e.clientY, 0) ? "grab" : "");
   }
   function onCancel(e) {
     ptr.down = false;
     if (e.pointerType === "touch") ptr.in = false;
+    if (laserTouch !== -1 && e.pointerId === laserTouch) laserTouch = -1;
     if (!grab || e.pointerId !== grab.id) return;
     const g = grab;
     grab = null;
@@ -2317,8 +2457,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   window.addEventListener("click", (e) => {
     if (performance.now() < swallowUntil) { swallowUntil = 0; swallow(e); }
   }, { capture: true });
-  // скролл страницы блокируем только когда палец начался на коте / клубке
-  const blockTouch = (e) => { if (grab && e.cancelable) e.preventDefault(); };
+  // скролл страницы блокируем только когда палец начался на коте / клубке (или водит лазер)
+  const blockTouch = (e) => { if ((grab || laserTouch !== -1) && e.cancelable) e.preventDefault(); };
   window.addEventListener("touchstart", blockTouch, { capture: true, passive: false });
   window.addEventListener("touchmove", blockTouch, { capture: true, passive: false });
   window.addEventListener("contextmenu", (e) => {
@@ -2384,7 +2524,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 @keyframes kexPulse{50%{box-shadow:0 0 16px 5px rgba(255,40,60,.85)}}
 html.kex-grab,html.kex-grab *{cursor:grab!important}
 html.kex-grabbing,html.kex-grabbing *{cursor:grabbing!important}
-html.kex-laser,html.kex-laser *:not(.kex-toy):not(.kex-toy *){cursor:none!important}
+html.kex-laser,html.kex-laser *:not(.kex-toy):not(.kex-toy *):not(.controls):not(.controls *){cursor:none!important}
 html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-select:none!important}
 @media (prefers-reduced-motion:reduce){.kex-toys,.kex-toy,.kex-toy::after{transition:none}.kex-toy[aria-pressed="true"] .kex-dot{animation:none}}
 `;
@@ -2414,8 +2554,10 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
     setTimeout(() => { toysEl.inert = false; toysEl.classList.add("is-on"); }, 600);
   }
 
+  let laserHinted = false;
   function setLaser(on) {
     laser.on = on;
+    if (!on) laserTouch = -1;
     laserBtn.setAttribute("aria-pressed", String(on));
     de.classList.toggle("kex-laser", on && !env?.coarse);
     sfx("pop");
@@ -2424,6 +2566,10 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
       if (ptr.type === "mouse" && ptr.in) { laser.has = true; laser.x = ptr.x; laser.y = ptr.y; }
       else {
         // на тач-экране точка появляется рядом с котом, дальше двигаешь пальцем
+        if (!laserHinted && (env?.coarse || ptr.type === "touch")) {
+          laserHinted = true;
+          try { toast?.(`води пальцем — ${NAME} ловит точку. Выключи лазер, чтобы листать`); } catch (_) { /* ок */ }
+        }
         laser.has = true;
         laser.x = clamp(cat.x + (cat.x < W / 2 ? 1 : -1) * 140 * K, 40, W - 40);
         laser.y = cat.surf.top - 6;

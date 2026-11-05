@@ -21,10 +21,6 @@ const LINK_FALLBACK_SVG =
   '<svg viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>';
 const SVG_REPO =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19.5V5a2 2 0 0 1 2-2h12v15H7a2 2 0 0 0-2 2Zm0 0A2 2 0 0 0 7 22h12v-4"/></svg>';
-const SVG_PEOPLE =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.2A6.5 6.5 0 0 1 21.5 20"/></svg>';
-const SVG_CAL =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>';
 
 function plural(n, forms) {
   const a = Math.abs(n) % 100;
@@ -62,16 +58,19 @@ async function copyText(text) {
 
 // ------------------------------------------------------------------ тосты (очередь)
 function createToaster(el) {
-  const queue = [];
+  const queue = []; // { msg, key }
   let current = null;
+  let currentKey = null;
   let timer = 0;
 
   const durFor = (msg) => clamp(1700 + msg.length * 45, 2000, 4200);
 
   function next() {
-    const msg = queue.shift();
-    if (msg == null) { current = null; return; }
+    const item = queue.shift();
+    if (item == null) { current = null; currentKey = null; return; }
+    const msg = item.msg;
     current = msg;
+    currentKey = item.key;
     el.textContent = msg;
     el.classList.remove("is-on");
     void el.offsetWidth; // перезапуск анимации
@@ -84,7 +83,8 @@ function createToaster(el) {
     clearTimeout(timer);
     timer = setTimeout(next, 420);
   }
-  function show(msg) {
+  // key — сообщения с одним ключом заменяют друг друга (например, «вечеринка вкл/выкл»)
+  function show(msg, key = null) {
     if (!el || msg == null) return;
     msg = String(msg).trim();
     if (!msg) return;
@@ -94,14 +94,17 @@ function createToaster(el) {
       timer = setTimeout(hide, durFor(msg));
       return;
     }
-    if (queue[queue.length - 1] === msg) return;
-    queue.push(msg);
+    if (key) {
+      for (let i = queue.length - 1; i >= 0; i--) if (queue[i].key === key) queue.splice(i, 1);
+    }
+    if (queue.length && queue[queue.length - 1].msg === msg) return;
+    queue.push({ msg, key });
     if (queue.length > 3) queue.splice(0, queue.length - 3);
     if (current === null) next();
-    else if (el.classList.contains("is-on") && queue.length > 1) {
-      // очередь копится — показываем текущее короче
+    else if (el.classList.contains("is-on")) {
+      // есть очередь — текущее досматриваем коротко (а устаревшее с тем же ключом убираем сразу)
       clearTimeout(timer);
-      timer = setTimeout(hide, 700);
+      timer = setTimeout(hide, key && key === currentKey ? 120 : 650);
     }
   }
   return show;
@@ -410,9 +413,11 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       snd?.setAttribute("aria-label", muted ? "Включить звук" : "Выключить звук");
       if (snd) snd.dataset.tip = muted ? "звук выключен" : "звук включён";
       box.classList.toggle("is-muted", muted);
+      syncMusic();
     }
     function syncMusic() {
-      const on = !!audio.musicPlaying;
+      // при выключенном звуке музыку не слышно — кнопка показывает «выкл»
+      const on = !!audio.musicPlaying && !audio.muted;
       mus?.setAttribute("aria-pressed", String(on));
       mus?.setAttribute("aria-label", on ? "Выключить музыку" : "Включить музыку");
       if (mus) mus.dataset.tip = on ? "музыка играет" : "музыка";
@@ -428,11 +433,12 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     });
     mus?.addEventListener("click", (e) => {
       blurIfMouse(e, mus);
-      if (audio.musicPlaying) call(audio, "musicOff");
-      else {
-        if (audio.muted) call(audio, "setMuted", false);
-        call(audio, "musicOn");
-      }
+      if (audio.muted) {
+        // звук выключен — кнопка музыки значит «хочу слышать музыку»: включаем звук (и музыку, если не играла)
+        call(audio, "setMuted", false);
+        if (!audio.musicPlaying) call(audio, "musicOn");
+      } else if (audio.musicPlaying) call(audio, "musicOff");
+      else call(audio, "musicOn");
       syncMusic();
       syncSound();
     });
@@ -440,9 +446,8 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       b?.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") call(audio, "tick"); })
     );
     window.addEventListener("sempik:mute", syncSound);
-    window.addEventListener("sempik:enter", () => { syncSound(); syncMusic(); });
+    window.addEventListener("sempik:enter", () => { syncSound(); });
     syncSound();
-    syncMusic();
   }
 
   // ---------------------------------------------------------------- печатная машинка
@@ -505,16 +510,25 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     const box = $(".gh");
     const user = config.github?.user;
     if (!box || !user || typeof fetch !== "function") { box?.remove(); return; }
+    // localStorage (а не sessionStorage): у GitHub API без токена 60 запросов в час на IP —
+    // кэшируем на 6 часов, а неудачу — на 15 минут, чтобы не долбить API при каждом открытии
     const key = `sempik:gh:${user}`;
-    const TTL = 30 * 60 * 1000;
+    const failKey = `sempik:gh-fail:${user}`;
+    const TTL = 6 * 60 * 60 * 1000;
+    const FAIL_TTL = 15 * 60 * 1000;
+    const store = {
+      get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (_) { return null; } },
+      set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* приватный режим */ } },
+    };
 
-    let cached = null;
-    try {
-      const c = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (c && c.u && Date.now() - c.t < TTL) cached = c;
-    } catch (_) { /* sessionStorage недоступен */ }
-
-    if (cached) { render(cached); return; }
+    const cached = store.get(key);
+    if (cached && cached.u && Date.now() - cached.t < TTL) { render(cached); return; }
+    const failed = store.get(failKey);
+    if (failed && Date.now() - failed.t < FAIL_TTL) {
+      // API недавно не ответил — показываем старые данные, если есть, иначе молча прячем блок
+      if (cached && cached.u) render(cached); else box.remove();
+      return;
+    }
 
     const ctrl = typeof AbortController === "function" ? new AbortController() : null;
     const to = setTimeout(() => ctrl?.abort(), 25000);
@@ -541,10 +555,17 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
             .slice(0, 3)
             .map((x) => ({ name: String(x.name), url: String(x.html_url) })),
         };
-        try { sessionStorage.setItem(key, JSON.stringify(data)); } catch (_) { /* не страшно */ }
+        store.set(key, data);
+        // ответ пришёл, когда человек уже читает карточку: на десктопе она отцентрована по вертикали,
+        // и новый блок сдвинул бы её (вместе с котом) — показываем в следующий раз, из кэша
+        if (root.classList.contains("entered") && innerWidth >= 900) { box.remove(); return; }
         render(data);
       })
-      .catch(() => box.remove())
+      .catch(() => {
+        store.set(failKey, { t: Date.now() });
+        if (cached && cached.u && !root.classList.contains("entered")) render(cached);
+        else box.remove();
+      })
       .finally(() => clearTimeout(to));
 
     function render(data) {
@@ -552,16 +573,14 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
         const stats = $(".gh__stats", box);
         const items = [];
         const { repos, followers, since } = data.u;
-        if (repos != null) {
-          items.push([SVG_REPO, `<b>${repos}</b> ${plural(repos, ["репозиторий", "репозитория", "репозиториев"])}`]);
-        }
+        if (repos != null) items.push(`<b>${repos}</b> репо`);
         if (followers != null) {
-          items.push([SVG_PEOPLE, `<b>${followers}</b> ${plural(followers, ["подписчик", "подписчика", "подписчиков"])}`]);
+          items.push(`<b>${followers}</b> ${plural(followers, ["подписчик", "подписчика", "подписчиков"])}`);
         }
         const year = since ? new Date(since).getFullYear() : NaN;
-        if (Number.isFinite(year)) items.push([SVG_CAL, `на GitHub с <b>${year}</b>`]);
+        if (Number.isFinite(year)) items.push(`с <b>${year}</b>`);
         if (!items.length) { box.remove(); return; }
-        stats.innerHTML = items.map(([svg, html]) => `<li>${svg}<span>${html}</span></li>`).join("");
+        if (stats) stats.innerHTML = items.join('<i aria-hidden="true">·</i>');
 
         const recent = $(".gh__recent", box);
         const list = $(".gh__repos", box);
@@ -677,6 +696,8 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     let x = -100, y = -100, gx = -100, gy = -100, s = 1, ts = 1;
     let lastX = null, lastY = null, travel = 0, lastSpawn = 0;
     let visible = false;
+    // над карточкой светлячок и лепестки не нужны — они мажут стекло и текст
+    let overCard = false;
     let rafId = 0;
 
     function frame() {
@@ -731,7 +752,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
         if (travel > 90 && t - lastSpawn > 80) {
           travel = 0;
           lastSpawn = t;
-          if (Math.random() < 0.6) spawn(x, y, dx, dy);
+          if (!overCard && Math.random() < 0.6) spawn(x, y, dx, dy);
         }
       }
       lastX = x;
@@ -742,6 +763,8 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     document.addEventListener("pointerover", (e) => {
       const t = e.target;
       ts = t && t.closest && t.closest("a, button, [role='button'], .avatar") ? 1.9 : 1;
+      const oc = !!(t && t.closest && t.closest(".card"));
+      if (oc !== overCard) { overCard = oc; glow.classList.toggle("is-dim", oc); }
       kick();
     }, { passive: true });
     document.addEventListener("pointerdown", () => { ts = Math.max(0.7, ts * 0.7); kick(); }, { passive: true });
@@ -769,7 +792,7 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
       on = !!next;
       root.classList.toggle("party", on);
       try { window.dispatchEvent(new CustomEvent("sempik:party", { detail: { on } })); } catch (_) { /* старый браузер */ }
-      toast(on ? "🎉 режим вечеринки" : "вечеринка окончена 😴");
+      toast(on ? "🎉 режим вечеринки" : "вечеринка окончена 😴", "party");
       call(audio, "chime");
     }
 
@@ -795,6 +818,10 @@ export function initUI({ config = {}, icons, audio = null, env = {}, onEnter } =
     const av = $(".avatar");
     if (av) {
       let taps = [];
+      // с клавиатуры: Enter/Space = клик
+      av.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " " || e.code === "Space") { e.preventDefault(); av.click(); }
+      });
       av.addEventListener("click", () => {
         const t = performance.now();
         taps = taps.filter((x) => t - x < 1800);

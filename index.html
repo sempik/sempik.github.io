@@ -28,7 +28,10 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600..800&family=Manrope:wght@400..700&family=JetBrains+Mono:wght@400..500&display=swap">
+<!-- шрифты не блокируют отрисовку: если Google Fonts тормозит, страница видна сразу с запасными шрифтами -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600..800&family=Manrope:wght@400..700&family=JetBrains+Mono:wght@400..500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600..800&family=Manrope:wght@400..700&family=JetBrains+Mono:wght@400..500&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600..800&family=Manrope:wght@400..700&family=JetBrains+Mono:wght@400..500&display=swap"></noscript>
 <link rel="stylesheet" href="css/style.css">
 
 <script type="importmap">
@@ -39,6 +42,19 @@
   }
 }
 </script>
+<!-- качаем все модули параллельно, а не цепочкой main → scene3d → three -->
+<link rel="modulepreload" href="js/main.js">
+<link rel="modulepreload" href="js/config.js">
+<link rel="modulepreload" href="js/icons.js">
+<link rel="modulepreload" href="js/ui.js">
+<link rel="modulepreload" href="js/audio.js">
+<link rel="modulepreload" href="js/cat.js">
+<link rel="modulepreload" href="js/scene3d.js">
+<link rel="modulepreload" href="vendor/three/three.module.min.js">
+<link rel="modulepreload" href="vendor/three/addons/loaders/SVGLoader.js">
+<link rel="modulepreload" href="vendor/three/addons/environments/RoomEnvironment.js">
+<link rel="modulepreload" href="vendor/three/addons/utils/BufferGeometryUtils.js">
+<link rel="modulepreload" href="vendor/three/addons/math/SimplexNoise.js">
 <script>
   // js есть → карточка прячется до входа. Страховка: если main.js так и не поднялся
   // (например, сломан config.js), заставку всё равно можно закрыть кликом.
@@ -65,9 +81,9 @@
 
 <!-- 1. фон: мокшен-видео + затемнение + зерно -->
 <div class="bg" aria-hidden="true">
-  <video id="bg-video" autoplay muted loop playsinline preload="auto" poster="assets/motion-poster.jpg" disablepictureinpicture disableremoteplayback tabindex="-1">
-    <source src="assets/motion.mp4" type="video/mp4">
-  </video>
+  <!-- src ставит скрипт внизу страницы: на телефонах — облегчённая 720p-версия, при «меньше движения»
+       или экономии трафика — только постер; качать начинаем, когда 3D уже загрузилось (или при входе) -->
+  <video id="bg-video" autoplay muted loop playsinline preload="none" poster="assets/motion-poster.jpg" data-src="assets/motion.mp4" data-src-sm="assets/motion-720.mp4" disablepictureinpicture disableremoteplayback tabindex="-1"></video>
   <div class="bg-shade"></div>
   <div class="grain"></div>
 </div>
@@ -81,7 +97,7 @@
     <div class="card__glare" aria-hidden="true"></div>
 
     <header class="card__head">
-      <div class="avatar reveal" style="--i:0">
+      <div class="avatar reveal" style="--i:0" role="button" tabindex="0" aria-label="Аватарка sempik — нажми, будет буп">
         <span class="avatar__glow" aria-hidden="true"></span>
         <span class="avatar__ring" aria-hidden="true"></span>
         <span class="avatar__img"><img src="avatar.jpg" alt="Аватар sempik — плюшевый мишка" width="640" height="640" decoding="async"></span>
@@ -111,15 +127,14 @@
 
     <section class="gh" hidden aria-label="Статистика GitHub">
       <div class="gh__inner">
-        <p class="gh__head"><span class="gh__label">github</span><span class="gh__live"><span class="gh__pulse" aria-hidden="true"></span>live</span></p>
-        <ul class="gh__stats"></ul>
-        <div class="gh__recent" hidden><span class="gh__recent-label">недавно пушил</span><ul class="gh__repos"></ul></div>
+        <p class="gh__head"><span class="gh__label">github</span><span class="gh__stats"></span></p>
+        <div class="gh__recent" hidden><span class="gh__recent-label">недавно:</span><ul class="gh__repos"></ul></div>
       </div>
     </section>
 
     <footer class="card__foot reveal" style="--i:9">
       <span class="card__copy">© <span class="js-year">2026</span> sempik · сделано с 💗 и котом</span>
-      <span class="card__hint">погладь кота · <span class="konami" title="Konami code">↑↑↓↓←→←→BA</span></span>
+      <span class="card__hint">погладь кота · <span class="konami" title="подсказка: Konami code">тут есть секрет</span></span>
     </footer>
   </article>
 </main>
@@ -141,6 +156,31 @@
 </div>
 
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<script>
+  // фоновое видео: качаем после загрузки модулей (не отнимаем канал у three.js) или при входе
+  (function () {
+    var v = document.getElementById("bg-video");
+    if (!v) return;
+    var rm = false;
+    try { rm = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    var c = navigator.connection || {};
+    if (rm || c.saveData) return; // хватит постера
+    var started = false;
+    function go() {
+      if (started) return;
+      started = true;
+      v.preload = "auto";
+      v.src = innerWidth < 900 ? v.getAttribute("data-src-sm") : v.getAttribute("data-src");
+      try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+    }
+    if (window.__sempikLoaded) go();
+    addEventListener("sempik:loaded", go);
+    addEventListener("sempik:enter", go);
+    // страховка: модули так и не отчитались
+    addEventListener("load", function () { setTimeout(go, 9000); });
+  })();
+</script>
 
 <div id="splash" role="button" tabindex="0" aria-label="Войти на сайт sempik">
   <div class="splash__fx" aria-hidden="true">
