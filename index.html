@@ -95,16 +95,18 @@
     <p class="about reveal" style="--i:4">Привет, я sempik. Пишу код, собираю странные штуки для браузера и иногда играю. Пиши в любую соцсеть ниже — отвечаю, когда не сплю.</p>
 
     <nav class="links" aria-label="Где меня найти">
-      <a class="link reveal" style="--i:5" href="https://github.com/sempik" target="_blank" rel="noopener"><span class="link__text"><span class="link__name">GitHub</span><span class="link__sub">@sempik</span></span></a>
-      <a class="link reveal" style="--i:6" href="https://steamcommunity.com/profiles/76561199049345067/" target="_blank" rel="noopener"><span class="link__text"><span class="link__name">Steam</span><span class="link__sub">профиль</span></span></a>
-      <p class="link reveal" style="--i:7"><span class="link__text"><span class="link__name">Discord</span><span class="link__sub">babazina</span></span></p>
+      <ul class="links__list">
+        <li class="reveal" style="--i:5"><a class="link" href="https://github.com/sempik" target="_blank" rel="noopener"><span class="link__text"><span class="link__name">GitHub</span><span class="link__sub">@sempik</span></span></a></li>
+        <li class="reveal" style="--i:6"><a class="link" href="https://steamcommunity.com/profiles/76561199049345067/" target="_blank" rel="noopener"><span class="link__text"><span class="link__name">Steam</span><span class="link__sub">профиль</span></span></a></li>
+        <li class="reveal" style="--i:7"><span class="link"><span class="link__text"><span class="link__name">Discord</span><span class="link__sub">babazina</span></span></span></li>
+      </ul>
     </nav>
 
     <section class="gh" hidden aria-label="Статистика GitHub">
       <div class="gh__inner">
-        <p class="gh__head"><span class="gh__label">github</span><span class="gh__live"><span aria-hidden="true"></span>live</span></p>
+        <p class="gh__head"><span class="gh__label">github</span><span class="gh__live"><span class="gh__pulse" aria-hidden="true"></span>live</span></p>
         <ul class="gh__stats"></ul>
-        <ul class="gh__repos"></ul>
+        <div class="gh__recent" hidden><span class="gh__recent-label">недавно пушил</span><ul class="gh__repos"></ul></div>
       </div>
     </section>
 

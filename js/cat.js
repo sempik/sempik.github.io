@@ -237,7 +237,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     x: 0, y: 0, vx: 0, vy: 0, rot: 0, vrot: 0,
     dir: 1, face: 1, surf: floorSurf,
     tumble: false, landOn: null, airT: 0, thrown: false, greet: false, pounce: false,
-    sq: 0, sqv: 0, phase: 0, task: null, moved: false,
+    sq: 0, sqv: 0, phase: 0, task: null, moved: false, rotVis: 0,
     sx: 0, sy: 0, cmx: 0, cmy: 0, cmpx: 0, cmpy: 0,
   };
   // сглаженные параметры позы (P) и их цели (TG)
@@ -278,8 +278,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     const sq = cat.sq;
     gax = f * K * (1 + sq * 0.5);
     gay = K * (1 - sq);
-    gc = Math.cos(cat.rot);
-    gs = Math.sin(cat.rot);
+    gc = Math.cos(cat.rot + cat.rotVis);
+    gs = Math.sin(cat.rot + cat.rotVis);
     gpiv = PIV * K;
   }
   const l2wX = (lx, ly) => { const ax = lx * gax, ay = ly * gay + gpiv; return cat.x + gc * ax - gs * ay; };
@@ -501,6 +501,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   function land(s) {
     const impact = cat.vy;
     const wasTumble = cat.tumble;
+    // остаток поворота догоняем плавно, без рывка
+    if (wasTumble) cat.rotVis = clamp(wrapAngle(cat.rot), -1.2, 1.2);
     cat.mode = "ground";
     cat.surf = s;
     cat.y = s.top;
@@ -511,7 +513,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     cat.tumble = false;
     cat.landOn = null;
     cat.sqv += clamp(impact / 1500, 0.12, 0.6) * 9;
-    if (impact > 650) {
+    if (impact > 650 || (wasTumble && impact > 250)) {
       const n = RM ? 3 : 7;
       for (let i = 0; i < n; i++) emit(DUST, cat.x + rand(-26, 26) * K, s.top - 2, rand(-90, 90), rand(-40, -10), rand(0.45, 0.7), rand(3, 6) * K);
       sfx("thud");
@@ -930,13 +932,14 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     }
   }
 
-  function registerFlip() {
+  function registerFlip(need = 3) {
     const t = now();
     pet.flips[pet.fi] = t;
     pet.fi = (pet.fi + 1) % pet.flips.length;
+    if (grab) grab.flips++;
     let n = 0;
     for (let i = 0; i < pet.flips.length; i++) if (t - pet.flips[i] < 1.5) n++;
-    if (n >= 3 && !pet.active) startPetting();
+    if (n >= need && !pet.active) startPetting();
     if (pet.active) pet.last = t;
   }
   function trackAxis(i, v) {
@@ -949,8 +952,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     if (Math.abs(v - pet.e[i]) > PET_TH) { pet.d[i] = -d; pet.e[i] = v; return true; }
     return false;
   }
-  function petMove(x, y) {
-    if (trackAxis(0, x) | trackAxis(1, y)) registerFlip();
+  function petMove(x, y, need) {
+    if (trackAxis(0, x) | trackAxis(1, y)) registerFlip(need);
     if (pet.active) pet.last = now();
   }
   function petReset(x, y) { pet.d[0] = pet.d[1] = 0; pet.e[0] = x; pet.e[1] = y; }
@@ -1064,7 +1067,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     } else if (cat.mode === "drag") {
       const k = 1 - Math.exp(-32 * dt);
       cat.sx += (clamp(ptr.x, 20 * K, W - 20 * K) - cat.sx) * k;
-      cat.sy += (clamp(ptr.y, 34 * K, FLOOR - 8 * K) - cat.sy) * k;
+      cat.sy += (clamp(ptr.y, 34 * K, FLOOR - 72 * K) - cat.sy) * k;
       const hang = HANG_L * K;
       const vx = (cat.cmx - cat.cmpx) * 0.99, vy = (cat.cmy - cat.cmpy) * 0.99;
       cat.cmpx = cat.cmx; cat.cmpy = cat.cmy;
@@ -1449,7 +1452,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 
   function applyCatXform() {
     ctx.translate(cat.x, cat.y - gpiv);
-    ctx.rotate(cat.rot);
+    ctx.rotate(cat.rot + cat.rotVis);
     ctx.translate(0, gpiv);
     ctx.scale(gax, gay);
   }
@@ -2004,6 +2007,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     cat.moved = false;
     // разворот: «переворачиваем» кота по X (быстро, ~0.25 c)
     if (cat.mode !== "drag") cat.face = toward(cat.face, cat.dir, dt * (RM ? 7 : 10));
+    cat.rotVis = cat.mode === "ground" ? follow(cat.rotVis, 0, 16, dt) : 0;
     if (cat.mode === "ground") {
       const s = cat.surf;
       if (!s.floor && !s.stay) fall();
@@ -2105,7 +2109,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   }
 
   // ================================================================ ЦИКЛ
-  let raf = 0, running = false, lastT = 0, errored = false, timeScale = 1;
+  let raf = 0, running = false, lastT = 0, errored = false, timeScale = 1, perfMs = 0;
   function frame(ts) {
     if (!running) return;
     raf = requestAnimationFrame(frame);
@@ -2115,8 +2119,10 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     if (dt > 0.05) dt = 0.05;
     dt *= timeScale;
     try {
+      const t0 = performance.now();
       tick(dt);
       render(dt);
+      perfMs = perfMs * 0.95 + (performance.now() - t0) * 0.05;
     } catch (e) {
       if (!errored) { errored = true; console.error("[cat]", e); }
       stopLoop();
@@ -2185,6 +2191,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   function onDown(e) {
     trackPtr(e);
     ptr.down = true;
+    swallowUntil = 0; // новый жест — прошлый «съеденный» клик больше не ждём
     if (laser.on && e.pointerType === "touch") laserTo(e.clientX, e.clientY);
     if (!cat.vis || grab) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -2197,7 +2204,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     if (overChrome(e.target)) return;
     swallow(e);
     swallowUntil = performance.now() + 900;
-    grab = { id: e.pointerId, what, sx: e.clientX, sy: e.clientY, t0: now(), dragging: false, touch, moved: 0, petted: false };
+    grab = { id: e.pointerId, what, sx: e.clientX, sy: e.clientY, t0: now(), dragging: false, touch, moved: 0, petted: false, flips: 0 };
     if (what === 2) {
       yarn.grabbed = true;
       yarn.ox = yarn.x - e.clientX;
@@ -2221,11 +2228,13 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
       if (grab.what === 1 && !grab.dragging) {
         if (grab.touch) {
           // на тач-экране: штрихи по коту — гладим, рывок вверх/наружу — берём на руки
-          petMove(e.clientX, e.clientY);
-          if (pet.active) grab.petted = true;
+          petMove(e.clientX, e.clientY, 2);
+          if (pet.active || grab.flips > 0) grab.petted = true;
           const out = !hitCat(e.clientX, e.clientY, 30);
-          const hold = now() - grab.t0 > 0.45 && grab.moved > 8 && !grab.petted;
+          // долгое удержание без «штрихов» туда-сюда — тоже берём на руки
+          const hold = now() - grab.t0 > 0.45 && grab.moved > 8;
           if (!grab.petted && grab.moved > 8 && (dy < -18 || out || hold)) beginDrag();
+          else if (grab.petted && out && grab.moved > 60 && !pet.active) beginDrag();
         } else if (grab.moved > 6) beginDrag();
       }
       return;
@@ -2257,7 +2266,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
     de.classList.remove("kex-noselect");
     if (g.what === 1) {
       if (g.dragging) releaseDrag();
-      else if (g.touch && g.moved >= 8) registerFlip();
+      else if (g.touch && g.moved >= 8 && !g.petted) registerFlip(2);
       else if (g.moved < 8 && !g.petted && !pet.active) onCatClick();
     } else {
       yarn.grabbed = false;
@@ -2297,8 +2306,12 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   }, { capture: true });
   window.addEventListener("selectstart", (e) => { if (grab) e.preventDefault(); }, { capture: true });
   window.addEventListener("dragstart", (e) => { if (grab) e.preventDefault(); }, { capture: true });
-  document.addEventListener("pointerleave", () => { ptr.in = false; setCursor(grab ? cursorMode : ""); });
-  document.addEventListener("mouseleave", () => { ptr.in = false; });
+  window.addEventListener("mouseout", (e) => {
+    if (e.relatedTarget) return;
+    ptr.in = false;
+    if (!grab) setCursor("");
+  });
+  window.addEventListener("blur", () => { ptr.in = false; });
 
   function laserTo(x, y) {
     const t = now();
@@ -2321,7 +2334,7 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.45),0 0 18px rgba(255,61,154,.16);
   -webkit-backdrop-filter:blur(12px) saturate(1.4);backdrop-filter:blur(12px) saturate(1.4);
   transition:transform .25s cubic-bezier(.2,.9,.3,1.3),box-shadow .25s,border-color .25s,background-color .25s;-webkit-tap-highlight-color:transparent}
-.kex-toy:hover{transform:translateY(-2px);border-color:rgba(255,140,198,.65);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 10px 26px rgba(0,0,0,.5),0 0 26px rgba(255,61,154,.38)}
+@media (hover:hover){.kex-toy:hover{transform:translateY(-2px);border-color:rgba(255,140,198,.65);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 10px 26px rgba(0,0,0,.5),0 0 26px rgba(255,61,154,.38)}}
 .kex-toy:active{transform:scale(.92)}
 .kex-toy:focus-visible{outline:2px solid #ff8cc6;outline-offset:3px}
 .kex-toy[aria-pressed="true"]{border-color:#ff8cc6;background-color:rgba(255,61,154,.2);
@@ -2329,7 +2342,8 @@ export function initCat({ canvas, config, audio, env, toast } = {}) {
 .kex-toy::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 9px);transform:translate(-50%,4px);white-space:nowrap;
   font:600 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.02em;color:#f6f0ff;background:rgba(20,11,34,.82);
   border:1px solid rgba(255,140,198,.3);padding:6px 8px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
-.kex-toy:hover::after,.kex-toy:focus-visible::after{opacity:1;transform:translate(-50%,0)}
+@media (hover:hover){.kex-toy:hover::after{opacity:1;transform:translate(-50%,0)}}
+.kex-toy:focus-visible::after{opacity:1;transform:translate(-50%,0)}
 .kex-dot{width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 38% 34%,#fff 0 16%,#ff4a4a 42%,#c3001c 100%);
   box-shadow:0 0 10px 2px rgba(255,40,60,.7)}
 .kex-toy[aria-pressed="true"] .kex-dot{animation:kexPulse 1.1s ease-in-out infinite}
@@ -2440,7 +2454,7 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
     DPR = Math.min(window.devicePixelRatio || 1, mob ? 1.5 : 2);
     canvas.width = Math.round(W * DPR);
     canvas.height = Math.round(H * DPR);
-    K = mob ? (W < 480 ? 0.98 : 1.08) : 1.28;
+    K = mob ? (W < 480 ? 1.04 : 1.12) : 1.28;
     FLOOR = H - 3;
     floorSurf.top = FLOOR; floorSurf.left = 0; floorSurf.right = W;
     if (cat.vis) {
@@ -2494,6 +2508,8 @@ html.kex-noselect,html.kex-noselect *{user-select:none!important;-webkit-user-se
       setTask: (type, o) => { if (cat.mode === "ground") setTask(type, o); },
       setLaser, setYarn, say, think,
       set timeScale(v) { timeScale = v; },
+      get perfMs() { return perfMs; },
+      get running() { return running; },
       get petCount() { return petCount; },
       get head() { return { x: headWX, y: headWY }; },
       get body() { return { x: bodyWX, y: bodyWY }; },
